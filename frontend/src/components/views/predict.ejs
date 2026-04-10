@@ -1,0 +1,87 @@
+<!-- views/predict.ejs — Custom Prediction Tool -->
+<section class="page-hero">
+  <div class="hero-label mono">MANUAL MATCHUP</div>
+  <h1 class="hero-title">Build Your<br><em>Own</em> Prediction</h1>
+  <p class="hero-sub">Select any two teams and define the home court. The model runs instantly.</p>
+</section>
+
+<section class="predict-layout">
+  <div class="predict-form-card">
+    <div class="form-section">
+      <label class="form-label mono">TEAM A (Away)</label>
+      <select class="team-select" id="team-a">
+        <option value="">— SELECT TEAM —</option>
+        <% nbaTeams.forEach(t => { %>
+          <option value="<%= t.full_name %>"><%= t.full_name %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <div class="at-symbol mono">@</div>
+
+    <div class="form-section">
+      <label class="form-label mono">TEAM B (Home)</label>
+      <select class="team-select" id="team-b">
+        <option value="">— SELECT TEAM —</option>
+        <% nbaTeams.forEach(t => { %>
+          <option value="<%= t.full_name %>"><%= t.full_name %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <div class="form-section">
+      <label class="form-label mono">HOME COURT</label>
+      <div class="radio-group">
+        <label class="radio-opt">
+          <input type="radio" name="home" value="b" checked /> Team B (default)
+        </label>
+        <label class="radio-opt">
+          <input type="radio" name="home" value="a" /> Team A (neutral site)
+        </label>
+      </div>
+    </div>
+
+    <button class="run-btn mono" id="run-predict-btn" onclick="submitCustomPrediction()">
+      <span>RUN MODEL</span>
+      <span class="btn-arrow">→</span>
+    </button>
+  </div>
+
+  <!-- Result Panel -->
+  <div class="result-panel" id="result-panel" aria-live="polite">
+    <div class="result-placeholder mono" id="result-placeholder">
+      AWAITING INPUT...
+    </div>
+
+    <div class="result-content hidden" id="result-content">
+      <div class="result-label mono">PROJECTION</div>
+      <div class="result-matchup" id="result-matchup"></div>
+
+      <div class="result-bars">
+        <div class="result-prob-row">
+          <span class="mono result-team-label" id="res-label-a"></span>
+          <div class="result-track">
+            <div class="result-fill fill-a" id="res-bar-a"></div>
+          </div>
+          <span class="mono result-pct" id="res-pct-a"></span>
+        </div>
+        <div class="result-prob-row">
+          <span class="mono result-team-label" id="res-label-b"></span>
+          <div class="result-track">
+            <div class="result-fill fill-b" id="res-bar-b"></div>
+          </div>
+          <span class="mono result-pct" id="res-pct-b"></span>
+        </div>
+      </div>
+
+      <div class="result-verdict mono" id="result-verdict"></div>
+      <div class="result-note mono">MODEL: RANDOM FOREST · FEATURES: ORTG/DRTG EWMA + SOS + REST</div>
+    </div>
+
+    <div class="result-error hidden mono" id="result-error"></div>
+    <div class="result-loading hidden" id="result-loading">
+      <div class="spinner"></div>
+      <span class="mono">RUNNING MODEL...</span>
+    </div>
+  </div>
+</section>

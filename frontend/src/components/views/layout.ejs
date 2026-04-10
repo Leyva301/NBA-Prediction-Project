@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title><%= title || 'NBA Predictor' %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-bracket">[</span>
+        <span class="logo-text">COURT<em>IQ</em></span>
+        <span class="logo-bracket">]</span>
+      </div>
+      <nav class="site-nav">
+        <a href="/" class="nav-link">Live Games</a>
+        <a href="/predict" class="nav-link">Predict</a>
+      </nav>
+      <div class="live-indicator">
+        <span class="pulse-dot"></span>
+        <span class="mono">LIVE DATA</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="site-main">
+    <%- body %>
+  </main>
+
+  <footer class="site-footer">
+    <span class="mono">OSU ENGR · NBA PREDICTOR v1.0 · MODEL: RANDOM FOREST 200-TREE</span>
+  </footer>
+
+  <script src="/main.js"></script>
+</body>
+</html>

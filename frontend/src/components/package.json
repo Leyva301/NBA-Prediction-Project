@@ -1,0 +1,20 @@
+{
+  "name": "courtiq-nba-predictor",
+  "version": "1.0.0",
+  "description": "NBA game predictor — Node.js/EJS frontend + Python/Flask model backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-ejs-layouts": "^2.5.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.3"
+  }
+}

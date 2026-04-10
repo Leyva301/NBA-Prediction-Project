@@ -1,0 +1,84 @@
+<!-- views/index.ejs — Live Games Dashboard -->
+<section class="page-hero">
+  <div class="hero-label mono">TODAY'S MATCHUPS · <span id="live-date"></span></div>
+  <h1 class="hero-title">Who's <em>Playing</em><br>Tonight?</h1>
+  <p class="hero-sub">Live game data pulled from the NBA API. Click any matchup to run the model.</p>
+</section>
+
+<section class="games-grid" id="games-container">
+  <% if (games && games.length > 0) { %>
+    <% games.forEach(game => { %>
+      <article class="game-card" data-home="<%= game.homeTeam %>" data-away="<%= game.awayTeam %>">
+        <div class="game-status mono <% if (game.status === 'live') { %>status-live<% } else if (game.status === 'final') { %>status-final<% } else { %>status-upcoming<% } %>">
+          <% if (game.status === 'live') { %><span class="pulse-dot small"></span><% } %>
+          <%= game.statusText %>
+        </div>
+
+        <div class="matchup-row">
+          <div class="team away-team">
+            <div class="team-abbr"><%= game.awayAbbr %></div>
+            <div class="team-name"><%= game.awayTeam %></div>
+            <% if (game.status !== 'upcoming') { %>
+              <div class="team-score mono"><%= game.awayScore %></div>
+            <% } %>
+          </div>
+
+          <div class="vs-divider">
+            <span class="mono">VS</span>
+            <div class="court-line"></div>
+          </div>
+
+          <div class="team home-team">
+            <div class="team-abbr"><%= game.homeAbbr %></div>
+            <div class="team-name"><%= game.homeTeam %></div>
+            <% if (game.status !== 'upcoming') { %>
+              <div class="team-score mono"><%= game.homeScore %></div>
+            <% } %>
+          </div>
+        </div>
+
+        <% if (game.status !== 'final') { %>
+          <button
+            class="predict-btn mono"
+            onclick="runPrediction('<%= game.awayTeam %>', '<%= game.homeTeam %>', '<%= game.homeTeam %>')"
+          >
+            RUN MODEL →
+          </button>
+        <% } else { %>
+          <div class="final-badge mono">GAME COMPLETE</div>
+        <% } %>
+      </article>
+    <% }) %>
+  <% } else { %>
+    <div class="no-games">
+      <span class="mono">NO GAMES SCHEDULED TODAY</span>
+    </div>
+  <% } %>
+</section>
+
+<!-- Prediction Result Modal -->
+<div class="modal-overlay" id="pred-modal" aria-hidden="true">
+  <div class="modal-box">
+    <button class="modal-close mono" onclick="closeModal()">× CLOSE</button>
+    <div class="modal-label mono">MODEL OUTPUT</div>
+    <div class="matchup-header" id="modal-matchup"></div>
+    <div class="prob-bars" id="modal-bars">
+      <div class="prob-row" id="prob-team-a">
+        <span class="prob-label mono" id="label-a"></span>
+        <div class="prob-bar-track">
+          <div class="prob-bar bar-a" id="bar-a"></div>
+        </div>
+        <span class="prob-num mono" id="num-a"></span>
+      </div>
+      <div class="prob-row" id="prob-team-b">
+        <span class="prob-label mono" id="label-b"></span>
+        <div class="prob-bar-track">
+          <div class="prob-bar bar-b" id="bar-b"></div>
+        </div>
+        <span class="prob-num mono" id="num-b"></span>
+      </div>
+    </div>
+    <div class="confidence-badge mono" id="modal-confidence"></div>
+    <a href="/predict" class="modal-link mono">CUSTOM MATCHUP →</a>
+  </div>
+</div>
