@@ -1,1 +1,22 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Node
 node_modules/
+
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+flask.log
+node.log
+
+# Predictions data (optional — remove this if you want to track it)
+predictions.json

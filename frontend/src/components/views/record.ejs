@@ -1,0 +1,154 @@
+<!-- views/record.ejs — Model Performance Record -->
+<section class="page-hero">
+  <div class="hero-label mono">MODEL PERFORMANCE</div>
+  <h1 class="hero-title">Prediction<br><em>Record</em></h1>
+  <p class="hero-sub">Every prediction the model has made, logged against the real outcome. Auto-updated when games finish.</p>
+</section>
+
+<!-- ── STAT CARDS ── -->
+<section class="record-stat-cards">
+  <div class="stat-card">
+    <div class="stat-card-icon mono">#</div>
+    <div class="stat-card-num mono"><%= stats.total %></div>
+    <div class="stat-card-label mono">TOTAL PREDICTIONS</div>
+  </div>
+  <div class="stat-card stat-card--green">
+    <div class="stat-card-icon mono">✓</div>
+    <div class="stat-card-num mono accent-green"><%= stats.correct %></div>
+    <div class="stat-card-label mono">CORRECT</div>
+  </div>
+  <div class="stat-card stat-card--red">
+    <div class="stat-card-icon mono">✗</div>
+    <div class="stat-card-num mono accent-red"><%= stats.wrong %></div>
+    <div class="stat-card-label mono">WRONG</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon mono">⟳</div>
+    <div class="stat-card-num mono"><%= stats.pending %></div>
+    <div class="stat-card-label mono">PENDING</div>
+  </div>
+  <div class="stat-card stat-card--feature">
+    <div class="stat-card-label mono">ACCURACY</div>
+    <div class="stat-card-num mono stat-card-big <%= stats.accuracy >= 0.6 ? 'accent-green' : stats.accuracy >= 0.5 ? '' : 'accent-red' %>">
+      <%= stats.correct + stats.wrong > 0 ? (stats.accuracy * 100).toFixed(1) + '%' : '—' %>
+    </div>
+    <div class="stat-card-label mono">AVG CONFIDENCE: <%= stats.avgConfidence > 0 ? (stats.avgConfidence * 100).toFixed(1) + '%' : '—' %></div>
+  </div>
+</section>
+
+<!-- ── ACCURACY BAR ── -->
+<% if (stats.correct + stats.wrong > 0) { %>
+<section class="accuracy-bar-section">
+  <div class="accuracy-meta">
+    <span class="mono accuracy-meta-label">MODEL ACCURACY</span>
+    <span class="mono accuracy-meta-pct <%= stats.accuracy >= 0.6 ? 'accent-green' : 'accent-red' %>"><%= (stats.accuracy * 100).toFixed(1) %>%</span>
+  </div>
+  <div class="accuracy-track">
+    <div class="accuracy-fill" style="width: <%= (stats.accuracy * 100).toFixed(1) %>%">
+      <div class="accuracy-shimmer"></div>
+    </div>
+    <div class="accuracy-baseline"></div>
+  </div>
+  <div class="accuracy-scale mono">
+    <span>0%</span><span>25%</span><span>50% BASELINE</span><span>75%</span><span>100%</span>
+  </div>
+</section>
+<% } %>
+
+<!-- ── PREDICTIONS TABLE ── -->
+<section class="predictions-section">
+  <div class="section-header">
+    <div class="section-title mono">
+      ALL PREDICTIONS
+      <span class="section-count mono"><%= predictions.length %></span>
+    </div>
+    <div class="filter-group">
+      <button class="filter-btn mono active" onclick="filterTable('all', event)">ALL</button>
+      <button class="filter-btn mono filter-btn--green" onclick="filterTable('correct', event)">✓ CORRECT</button>
+      <button class="filter-btn mono filter-btn--red" onclick="filterTable('wrong', event)">✗ WRONG</button>
+      <button class="filter-btn mono" onclick="filterTable('pending', event)">⟳ PENDING</button>
+    </div>
+  </div>
+
+  <% if (predictions.length === 0) { %>
+    <div class="no-predictions">
+      <div class="no-pred-icon mono">[ ]</div>
+      <div class="no-pred-text mono">NO PREDICTIONS LOGGED YET</div>
+      <div class="no-pred-sub">Go to the <a href="/" class="no-pred-link">Live Games</a> page and click RUN MODEL on any matchup.</div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="pred-table" id="pred-table">
+        <thead>
+          <tr>
+            <th class="mono">DATE</th>
+            <th class="mono">MATCHUP</th>
+            <th class="mono">MODEL PICK</th>
+            <th class="mono">CONFIDENCE</th>
+            <th class="mono">ACTUAL</th>
+            <th class="mono">RESULT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% predictions.slice().reverse().forEach((p, i) => { %>
+            <tr class="pred-row" data-result="<%= p.result || 'pending' %>" style="animation-delay: <%= i * 0.04 %>s">
+              <td class="date-cell mono">
+                <%= new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) %>
+              </td>
+              <td class="matchup-cell">
+                <div class="matchup-inner">
+                  <span class="team-tag away-tag"><%= p.awayTeam.split(' ').pop().toUpperCase() %></span>
+                  <span class="at-divider mono">@</span>
+                  <span class="team-tag home-tag"><%= p.homeTeam.split(' ').pop().toUpperCase() %></span>
+                </div>
+              </td>
+              <td class="pick-cell mono">
+                <span class="pick-name"><%= p.predictedWinner.split(' ').pop().toUpperCase() %></span>
+              </td>
+              <td class="conf-cell">
+                <div class="conf-wrap">
+                  <div class="mini-bar-track">
+                    <div class="mini-bar <%= p.confidence > 0.62 ? 'mini-bar--hot' : '' %>"
+                         style="width: <%= (p.confidence * 100).toFixed(0) %>%"></div>
+                  </div>
+                  <span class="conf-pct mono"><%= (p.confidence * 100).toFixed(0) %>%</span>
+                </div>
+              </td>
+              <td class="actual-cell mono">
+                <% if (p.actualWinner) { %>
+                  <span class="actual-name <%= p.actualWinner === p.predictedWinner ? 'accent-green' : 'accent-red' %>">
+                    <%= p.actualWinner.split(' ').pop().toUpperCase() %>
+                  </span>
+                <% } else { %>
+                  <span class="pending-dot">···</span>
+                <% } %>
+              </td>
+              <td class="result-cell">
+                <% if (p.result === 'correct') { %>
+                  <span class="badge badge-correct mono">✓ HIT</span>
+                <% } else if (p.result === 'wrong') { %>
+                  <span class="badge badge-wrong mono">✗ MISS</span>
+                <% } else { %>
+                  <span class="badge badge-pending mono">
+                    <span class="pulse-dot small"></span> LIVE
+                  </span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<script>
+function filterTable(type, event) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.pred-row').forEach(row => {
+    const result = row.dataset.result;
+    row.style.display = (type === 'all' || result === type) ? '' : 'none';
+  });
+}
+</script>

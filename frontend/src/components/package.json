@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "flask": "python flask_api.py",
     "dev": "nodemon server.js"
   },
   "dependencies": {

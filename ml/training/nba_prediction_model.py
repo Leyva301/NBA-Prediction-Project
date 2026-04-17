@@ -157,4 +157,4 @@ def predict_pro(team_a, team_b, home_team):
 # EXECUTION LOGIC
 # ==============================================================================
 run_final_backtest(df_final)
-predict_pro("New Orleans Pelicans", "Sacramento Kings", "Sacramento Kings")
+predict_pro("Charlotte Hornets", "Brooklyn Nets", "Brooklyn Nets")
