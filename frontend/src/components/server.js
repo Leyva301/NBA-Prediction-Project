@@ -1,18 +1,9 @@
 /**
  * COURTIQ — Node.js / Express Server
  * -----------------------------------
- * Routes:
- *   GET  /          → index page (live games from NBA API)
- *   GET  /predict   → custom prediction form
- *   POST /api/predict → calls the Python Flask model API
- *
- * Environment variables (set in .env):
- *   PORT            = 3000
- *   FLASK_API_URL   = http://localhost:5000   ← your Python model server
- *   NBA_API_KEY     = (if you move to a paid NBA data provider)
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express    = require('express');
 const ejsLayouts = require('express-ejs-layouts');
 const axios      = require('axios');
@@ -20,7 +11,9 @@ const path       = require('path');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const FLASK_API_URL = process.env.FLASK_API_URL || 'http://flip3.engr.oregonstate.edu:5000';
+
+// 🔴 FIX 1: Point to your local Flask server instead of the university server
+const FLASK_API_URL = process.env.FLASK_API_URL || 'http://127.0.0.1:5000';
 
 console.log('Serving static from:', path.join(__dirname, 'public'));
 
@@ -70,26 +63,23 @@ const NBA_TEAMS = [
 ];
 
 // ── HELPER: Fetch today's NBA games from nba_api via Flask ──
-// The Flask server exposes a /games/today endpoint that returns
-// game data from the nba_api scoreboard endpoint.
 async function fetchTodaysGames() {
   try {
-    const res = await axios.get(`${FLASK_API_URL}/games/today`, { timeout: 8000 });
-    return res.data.games || [];
+    // 🔴 FIX 2: Change /games/today to /live-scores to match our Python code
+    const liveEndpoint = process.env.MOCK_SCORES === 'true' ? '/dev/live-scores' : '/live-scores';
+    const res = await axios.get(`${FLASK_API_URL}${liveEndpoint}`, { timeout: 8000 });
+    
+    // Our Python script returns a list directly, so we just return res.data
+    return res.data || [];
   } catch (err) {
     console.error('[fetchTodaysGames] Flask API unavailable:', err.message);
     // Return mock data so the UI still loads during development
     return [
       {
-        homeTeam: 'Milwaukee Bucks', homeAbbr: 'MIL', homeScore: null,
-        awayTeam: 'Miami Heat',      awayAbbr: 'MIA', awayScore: null,
-        status: 'upcoming', statusText: '7:30 PM ET'
-      },
-      {
-        homeTeam: 'Golden State Warriors', homeAbbr: 'GSW', homeScore: 112,
-        awayTeam: 'Los Angeles Lakers',    awayAbbr: 'LAL', awayScore: 108,
-        status: 'live', statusText: 'Q3 4:22'
-      },
+        homeTeam: 'Milwaukee Bucks', homeScore: null,
+        awayTeam: 'Miami Heat',      awayScore: null,
+        status: '7:30 PM ET'
+      }
     ];
   }
 }
@@ -110,6 +100,38 @@ app.get('/predict', (req, res) => {
   res.render('predict', {
     title: 'CourtIQ · Predict',
     nbaTeams: NBA_TEAMS
+  });
+});
+
+// ── API: Live Scores Proxy ──
+app.get('/api/live-scores', async (req, res) => {
+  try {
+    const flaskRes = await axios.get(`${FLASK_API_URL}/live-scores`, { timeout: 8000 });
+    return res.json(flaskRes.data);
+  } catch (err) {
+    console.error('[/api/live-scores] Flask error:', err.message);
+    return res.status(502).json({ error: 'Live score server unavailable.' });
+  }
+});
+
+// ── API: Explain Endpoint ──
+app.post('/api/explain', async (req, res) => {
+  try {
+    const flaskRes = await axios.post(`${FLASK_API_URL}/explain`, req.body, { timeout: 15000 });
+    return res.json(flaskRes.data);
+  } catch (err) {
+    console.error('[/api/explain] Flask error:', err.message);
+    return res.status(502).json({ error: 'Model server unavailable.' });
+  }
+});
+
+// ── Insights Page ──
+app.get('/insights', (req, res) => {
+  const { teamA, teamB, home } = req.query;
+  if (!teamA || !teamB || !home) return res.redirect('/predict');
+  res.render('insights', {
+    title: `CourtIQ · ${teamA} vs ${teamB}`,
+    teamA, teamB, home
   });
 });
 

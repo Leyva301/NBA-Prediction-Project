@@ -1,1 +1,14 @@
 node_modules/
+
+# Environment / config
+.env
+*.env
+
+# Generated model files and runtime data
+backend/models/*.pkl
+backend/data/
+
+# Python
+__pycache__/
+*.pyc
+.DS_Store

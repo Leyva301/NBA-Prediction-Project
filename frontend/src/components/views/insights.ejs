@@ -1,0 +1,223 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<a href="javascript:history.back()" class="back-link mono">← BACK</a>
+
+<section class="page-hero">
+  <div class="hero-label mono">MODEL ANALYSIS · FULL BREAKDOWN</div>
+  <h1 class="hero-title" id="insights-title">Loading<br><em>Analysis...</em></h1>
+  <p class="hero-sub">Every factor the model weighed to reach this projection.</p>
+</section>
+
+<div id="insights-loading" style="text-align:center;padding:4rem 0;">
+  <div class="spinner" style="margin:0 auto 1rem;"></div>
+  <span class="mono" style="color:var(--text-muted);font-size:0.7rem;letter-spacing:0.12em;">RUNNING MODEL...</span>
+</div>
+
+<div id="insights-error" style="display:none;background:rgba(255,77,28,0.08);border:1px solid var(--loss);border-radius:8px;padding:2rem;text-align:center;">
+  <p class="mono" style="color:var(--loss);font-size:0.8rem;" id="insights-error-msg"></p>
+</div>
+
+<div id="insights-content" style="display:none;">
+
+  <!-- WIN PROBABILITY -->
+  <section class="insights-prob">
+    <div class="prob-block team-a-block">
+      <div class="prob-role mono" id="role-a"></div>
+      <div class="prob-pct mono" id="pct-a"></div>
+      <div class="prob-team" id="name-a"></div>
+    </div>
+    <div class="prob-vs mono">VS</div>
+    <div class="prob-block team-b-block">
+      <div class="prob-role mono" id="role-b"></div>
+      <div class="prob-pct mono" id="pct-b"></div>
+      <div class="prob-team" id="name-b"></div>
+    </div>
+  </section>
+
+  <!-- NARRATIVE -->
+  <section class="insights-narrative">
+    <div class="narrative-label mono">MODEL REASONING</div>
+    <p class="narrative-text" id="narrative-text"></p>
+  </section>
+
+  <!-- FACTOR BREAKDOWN -->
+  <section class="insights-factors">
+    <div class="section-label mono">FACTOR BREAKDOWN</div>
+    <div class="chart-direction-labels">
+      <span class="mono" id="dir-label-b" style="color:var(--accent-2)"></span>
+      <span class="mono" style="color:var(--text-dim)">model weight</span>
+      <span class="mono" id="dir-label-a" style="color:var(--accent)"></span>
+    </div>
+    <div class="factor-chart-wrap">
+      <canvas id="factorChart"></canvas>
+    </div>
+    <div class="factor-cards" id="factor-cards"></div>
+  </section>
+
+  <!-- TEAM STATS -->
+  <section class="insights-stats">
+    <div class="section-label mono">TEAM COMPARISON</div>
+    <div class="stat-comparison">
+      <div class="stat-comparison-header">
+        <span class="stat-col-label mono" id="stat-head-a"></span>
+        <span class="stat-col-label mono" style="text-align:center">STAT</span>
+        <span class="stat-col-label mono" id="stat-head-b" style="text-align:right"></span>
+      </div>
+      <div id="stat-rows"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(async () => {
+  const params  = new URLSearchParams(window.location.search);
+  const teamA   = params.get('teamA');
+  const teamB   = params.get('teamB');
+  const home    = params.get('home');
+
+  const loadEl    = document.getElementById('insights-loading');
+  const errEl     = document.getElementById('insights-error');
+  const errMsgEl  = document.getElementById('insights-error-msg');
+  const contentEl = document.getElementById('insights-content');
+
+  function showError(msg) {
+    loadEl.style.display = 'none';
+    errMsgEl.textContent = msg;
+    errEl.style.display = 'block';
+  }
+
+  let data;
+  try {
+    const res = await fetch('/api/explain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ team_a: teamA, team_b: teamB, home_team: home })
+    });
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (err) {
+    showError('Could not load analysis: ' + err.message);
+    return;
+  }
+
+  // ── Populate page ──
+  const nickA = data.team_a.split(' ').pop().toUpperCase();
+  const nickB = data.team_b.split(' ').pop().toUpperCase();
+
+  document.getElementById('insights-title').innerHTML =
+    `<em>${nickA}</em><br>vs ${nickB}`;
+
+  document.getElementById('role-a').textContent = data.home_team === data.team_a ? 'HOME' : 'AWAY';
+  document.getElementById('pct-a').textContent  = (data.prob_a * 100).toFixed(1) + '%';
+  document.getElementById('name-a').textContent = data.team_a;
+
+  document.getElementById('role-b').textContent = data.home_team === data.team_b ? 'HOME' : 'AWAY';
+  document.getElementById('pct-b').textContent  = (data.prob_b * 100).toFixed(1) + '%';
+  document.getElementById('name-b').textContent = data.team_b;
+
+  document.getElementById('narrative-text').textContent = data.narrative;
+
+  document.getElementById('dir-label-b').textContent = `← favors ${nickB}`;
+  document.getElementById('dir-label-a').textContent = `favors ${nickA} →`;
+
+  // Factor cards
+  const cardsEl = document.getElementById('factor-cards');
+  data.factors.forEach(f => {
+    const winner = f.favors.split(' ').pop().toUpperCase();
+    cardsEl.innerHTML += `
+      <div class="factor-card ${f.favors_a ? 'favors-a' : 'favors-b'}">
+        <div class="factor-card-header">
+          <span class="factor-name mono">${f.name.toUpperCase()}</span>
+          <span class="factor-winner mono">▲ ${winner}</span>
+        </div>
+        <div class="factor-weight-bar">
+          <div class="factor-weight-fill" style="width:${(f.importance * 100).toFixed(0)}%"></div>
+        </div>
+        <p class="factor-desc">${f.description}</p>
+        <div class="factor-meta mono">Model weight: ${(f.importance * 100).toFixed(1)}%</div>
+      </div>`;
+  });
+
+  // Stat rows
+  const statDefs = [
+    { key: 'ortg',    label: 'OFF RATING',  sub: 'pts / 100 poss ↑', higherWins: true,  fmt: v => v },
+    { key: 'drtg',    label: 'DEF RATING',  sub: 'pts / 100 poss ↓', higherWins: false, fmt: v => v },
+    { key: 'win_pct', label: 'WIN PCT',      sub: 'season ↑',          higherWins: true,  fmt: v => v + '%' },
+    { key: 'rest',    label: 'REST',         sub: 'days since last ↑', higherWins: true,  fmt: v => v + 'd' },
+  ];
+  document.getElementById('stat-head-a').textContent = nickA;
+  document.getElementById('stat-head-b').textContent = nickB;
+  const rowsEl = document.getElementById('stat-rows');
+  statDefs.forEach(({ key, label, sub, higherWins, fmt }) => {
+    const va = data.stats.a[key], vb = data.stats.b[key];
+    const aWins = higherWins ? va > vb : va < vb;
+    const bWins = higherWins ? vb > va : vb < va;
+    rowsEl.innerHTML += `
+      <div class="stat-row">
+        <div class="stat-cell ${aWins ? 'stat-win' : ''}">
+          <span class="stat-val mono">${fmt(va)}</span>
+        </div>
+        <div class="stat-name-cell">
+          <span class="stat-name-main mono">${label}</span>
+          <span class="stat-name-sub mono">${sub}</span>
+        </div>
+        <div class="stat-cell stat-right ${bWins ? 'stat-win' : ''}">
+          <span class="stat-val mono">${fmt(vb)}</span>
+        </div>
+      </div>`;
+  });
+
+  // Chart
+  const maxImpact = Math.max(...data.factors.map(f => f.impact), 0.001);
+  const values  = data.factors.map(f => {
+    const norm = f.impact / maxImpact;
+    return f.favors_a ? norm : -norm;
+  });
+  const colors  = values.map(v => v >= 0 ? 'rgba(255,77,28,0.8)'  : 'rgba(0,229,160,0.8)');
+  const borders = values.map(v => v >= 0 ? '#ff4d1c' : '#00e5a0');
+
+  new Chart(document.getElementById('factorChart'), {
+    type: 'bar',
+    data: {
+      labels: data.factors.map(f => f.name),
+      datasets: [{ data: values, backgroundColor: colors, borderColor: borders, borderWidth: 1, borderRadius: 3 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const f = data.factors[ctx.dataIndex];
+              const dir = f.favors_a ? `favors ${nickA}` : `favors ${nickB}`;
+              return ` ${dir} · weight ${(f.importance * 100).toFixed(1)}%`;
+            }
+          },
+          backgroundColor: '#1a1a24', borderColor: '#2a2a3a', borderWidth: 1,
+          titleColor: '#e8e8f0', bodyColor: '#6b6b80',
+          titleFont: { family: 'DM Mono', size: 11 }, bodyFont: { family: 'DM Mono', size: 11 },
+        }
+      },
+      scales: {
+        x: {
+          min: -1.15, max: 1.15,
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          border: { color: '#2a2a3a' },
+          ticks: { color: '#3a3a4a', callback: v => v === 0 ? 'EVEN' : null, font: { family: 'DM Mono', size: 10 } }
+        },
+        y: {
+          grid: { display: false }, border: { display: false },
+          ticks: { color: '#e8e8f0', font: { family: 'DM Mono', size: 11 } }
+        }
+      }
+    }
+  });
+
+  loadEl.style.display = 'none';
+  contentEl.style.display = 'block';
+})();
+</script>

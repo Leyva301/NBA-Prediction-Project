@@ -77,6 +77,12 @@ async function runPrediction(teamA, teamB, homeTeam) {
       : `⚠ LOW EDGE — CAUTION ADVISED`;
     confidenceEl.classList.add(isBet ? 'bet' : 'caution');
 
+    const analysisLink = document.getElementById('modal-analysis-link');
+    if (analysisLink) {
+      analysisLink.href = `/insights?teamA=${encodeURIComponent(teamA)}&teamB=${encodeURIComponent(teamB)}&home=${encodeURIComponent(homeTeam)}`;
+      analysisLink.style.display = 'inline-block';
+    }
+
   } catch (err) {
     confidenceEl.textContent = `ERROR: ${err.message}`;
     confidenceEl.style.color = 'var(--loss)';
@@ -140,6 +146,12 @@ async function submitCustomPrediction() {
       ? `✓ HIGH CONFIDENCE — MODEL EDGE DETECTED`
       : `⚠ LOW EDGE — CAUTION ADVISED`;
     verdict.className = `result-verdict mono ${isBet ? 'bet' : 'caution'}`;
+
+    const analysisLink = document.getElementById('analysis-link');
+    if (analysisLink) {
+      analysisLink.href = `/insights?teamA=${encodeURIComponent(teamA)}&teamB=${encodeURIComponent(teamB)}&home=${encodeURIComponent(homeTeam)}`;
+      analysisLink.style.display = 'inline-block';
+    }
 
   } catch (err) {
     showError(err.message, placeholder, content, errorEl, loadingEl);

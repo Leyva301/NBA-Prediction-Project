@@ -1,62 +1,15 @@
-<!-- views/index.ejs — Live Games Dashboard -->
 <section class="page-hero">
-  <div class="hero-label mono">TODAY'S MATCHUPS · <span id="live-date"></span></div>
+  <div class="hero-label mono">TODAY'S MATCHUPS · <span id="live-date">LIVE</span></div>
   <h1 class="hero-title">Who's <em>Playing</em><br>Tonight?</h1>
   <p class="hero-sub">Live game data pulled from the NBA API. Click any matchup to run the model.</p>
 </section>
 
 <section class="games-grid" id="games-container">
-  <% if (games && games.length > 0) { %>
-    <% games.forEach(game => { %>
-      <article class="game-card" data-home="<%= game.homeTeam %>" data-away="<%= game.awayTeam %>">
-        <div class="game-status mono <% if (game.status === 'live') { %>status-live<% } else if (game.status === 'final') { %>status-final<% } else { %>status-upcoming<% } %>">
-          <% if (game.status === 'live') { %><span class="pulse-dot small"></span><% } %>
-          <%= game.statusText %>
-        </div>
-
-        <div class="matchup-row">
-          <div class="team away-team">
-            <div class="team-abbr"><%= game.awayAbbr %></div>
-            <div class="team-name"><%= game.awayTeam %></div>
-            <% if (game.status !== 'upcoming') { %>
-              <div class="team-score mono"><%= game.awayScore %></div>
-            <% } %>
-          </div>
-
-          <div class="vs-divider">
-            <span class="mono">VS</span>
-            <div class="court-line"></div>
-          </div>
-
-          <div class="team home-team">
-            <div class="team-abbr"><%= game.homeAbbr %></div>
-            <div class="team-name"><%= game.homeTeam %></div>
-            <% if (game.status !== 'upcoming') { %>
-              <div class="team-score mono"><%= game.homeScore %></div>
-            <% } %>
-          </div>
-        </div>
-
-        <% if (game.status !== 'final') { %>
-          <button
-            class="predict-btn mono"
-            onclick="runPrediction('<%= game.awayTeam %>', '<%= game.homeTeam %>', '<%= game.homeTeam %>')"
-          >
-            RUN MODEL →
-          </button>
-        <% } else { %>
-          <div class="final-badge mono">GAME COMPLETE</div>
-        <% } %>
-      </article>
-    <% }) %>
-  <% } else { %>
-    <div class="no-games">
-      <span class="mono">NO GAMES SCHEDULED TODAY</span>
-    </div>
-  <% } %>
+  <div class="no-games">
+    <span class="mono">SYNCING LIVE DATA...</span>
+  </div>
 </section>
 
-<!-- Prediction Result Modal -->
 <div class="modal-overlay" id="pred-modal" aria-hidden="true">
   <div class="modal-box">
     <button class="modal-close mono" onclick="closeModal()">× CLOSE</button>
@@ -79,6 +32,150 @@
       </div>
     </div>
     <div class="confidence-badge mono" id="modal-confidence"></div>
-    <a href="/predict" class="modal-link mono">CUSTOM MATCHUP →</a>
+    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+      <a href="/predict" class="modal-link mono">CUSTOM MATCHUP →</a>
+      <a href="#" id="modal-analysis-link" class="analysis-link" style="display:none">FULL ANALYSIS →</a>
+    </div>
   </div>
 </div>
+
+<script>
+  // Helper dictionary to get abbreviations (Full Name -> Abbreviation)
+  const teamAbbr = {
+    'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN', 'Charlotte Hornets': 'CHA', 
+    'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE', 'Dallas Mavericks': 'DAL', 'Denver Nuggets': 'DEN', 
+    'Detroit Pistons': 'DET', 'Golden State Warriors': 'GSW', 'Houston Rockets': 'HOU', 'Indiana Pacers': 'IND', 
+    'Los Angeles Clippers': 'LAC', 'Los Angeles Lakers': 'LAL', 'Memphis Grizzlies': 'MEM', 'Miami Heat': 'MIA', 
+    'Milwaukee Bucks': 'MIL', 'Minnesota Timberwolves': 'MIN', 'New Orleans Pelicans': 'NOP', 'New York Knicks': 'NYK', 
+    'Oklahoma City Thunder': 'OKC', 'Orlando Magic': 'ORL', 'Philadelphia 76ers': 'PHI', 'Phoenix Suns': 'PHX', 
+    'Portland Trail Blazers': 'POR', 'Sacramento Kings': 'SAC', 'San Antonio Spurs': 'SAS', 'Toronto Raptors': 'TOR', 
+    'Utah Jazz': 'UTA', 'Washington Wizards': 'WAS'
+  };
+
+  // 🔴 THE NEW FIX: Translator for NBA API Short Names -> Full Names
+  const shortToFull = {
+    'Hawks': 'Atlanta Hawks', 'Celtics': 'Boston Celtics', 'Nets': 'Brooklyn Nets',
+    'Hornets': 'Charlotte Hornets', 'Bulls': 'Chicago Bulls', 'Cavaliers': 'Cleveland Cavaliers',
+    'Mavericks': 'Dallas Mavericks', 'Nuggets': 'Denver Nuggets', 'Pistons': 'Detroit Pistons',
+    'Warriors': 'Golden State Warriors', 'Rockets': 'Houston Rockets', 'Pacers': 'Indiana Pacers',
+    'Clippers': 'Los Angeles Clippers', 'Lakers': 'Los Angeles Lakers', 'Grizzlies': 'Memphis Grizzlies',
+    'Heat': 'Miami Heat', 'Bucks': 'Milwaukee Bucks', 'Timberwolves': 'Minnesota Timberwolves',
+    'Pelicans': 'New Orleans Pelicans', 'Knicks': 'New York Knicks', 'Thunder': 'Oklahoma City Thunder',
+    'Magic': 'Orlando Magic', '76ers': 'Philadelphia 76ers', 'Suns': 'Phoenix Suns',
+    'Trail Blazers': 'Portland Trail Blazers', 'Kings': 'Sacramento Kings', 'Spurs': 'San Antonio Spurs',
+    'Raptors': 'Toronto Raptors', 'Jazz': 'Utah Jazz', 'Wizards': 'Washington Wizards'
+  };
+
+  function buildCard(game) {
+    const status      = game.status || 'Unknown';
+    const awayTeamStr = game.awayTeam || 'TBD';
+    const homeTeamStr = game.homeTeam || 'TBD';
+    const fullAway    = shortToFull[awayTeamStr] || awayTeamStr;
+    const fullHome    = shortToFull[homeTeamStr] || homeTeamStr;
+    const abbrAway    = teamAbbr[fullAway] || awayTeamStr.substring(0, 3).toUpperCase();
+    const abbrHome    = teamAbbr[fullHome] || homeTeamStr.substring(0, 3).toUpperCase();
+
+    const isLive     = status.includes('Q') || status.includes('Half') || status.includes('OT');
+    const isFinished = status.includes('Final');
+    const isUpcoming = !isLive && !isFinished;
+
+    const statusClass  = isUpcoming ? 'status-upcoming' : (isFinished ? 'status-final' : 'status-live');
+    const pulseDot     = isLive ? '<span class="pulse-dot small"></span>' : '';
+    const awayScoreHtml = !isUpcoming ? `<div class="team-score mono" id="score-away-${game.id}">${game.awayScore ?? 0}</div>` : '';
+    const homeScoreHtml = !isUpcoming ? `<div class="team-score mono" id="score-home-${game.id}">${game.homeScore ?? 0}</div>` : '';
+    const actionHtml    = !isFinished
+      ? `<button class="predict-btn mono" onclick="runPrediction('${fullAway}', '${fullHome}', '${fullHome}')">RUN MODEL →</button>`
+      : `<div class="final-badge mono">GAME COMPLETE</div>`;
+
+    return `
+      <article class="game-card" data-game-id="${game.id}" data-home="${fullHome}" data-away="${fullAway}">
+        <div class="game-status mono ${statusClass}" id="status-${game.id}">
+          ${pulseDot} ${status}
+        </div>
+        <div class="matchup-row">
+          <div class="team away-team">
+            <div class="team-abbr">${abbrAway}</div>
+            <div class="team-name">${awayTeamStr}</div>
+            ${awayScoreHtml}
+          </div>
+          <div class="vs-divider">
+            <span class="mono">VS</span>
+            <div class="court-line"></div>
+          </div>
+          <div class="team home-team">
+            <div class="team-abbr">${abbrHome}</div>
+            <div class="team-name">${homeTeamStr}</div>
+            ${homeScoreHtml}
+          </div>
+        </div>
+        ${actionHtml}
+      </article>`;
+  }
+
+  function patchCard(game) {
+    const status     = game.status || 'Unknown';
+    const isLive     = status.includes('Q') || status.includes('Half') || status.includes('OT');
+    const isFinished = status.includes('Final');
+    const isUpcoming = !isLive && !isFinished;
+
+    const statusEl = document.getElementById(`status-${game.id}`);
+    if (statusEl) {
+      statusEl.className = `game-status mono ${isUpcoming ? 'status-upcoming' : isFinished ? 'status-final' : 'status-live'}`;
+      statusEl.innerHTML = (isLive ? '<span class="pulse-dot small"></span> ' : '') + status;
+    }
+
+    if (!isUpcoming) {
+      const awayEl = document.getElementById(`score-away-${game.id}`);
+      const homeEl = document.getElementById(`score-home-${game.id}`);
+      if (awayEl) awayEl.textContent = game.awayScore ?? 0;
+      if (homeEl) homeEl.textContent = game.homeScore ?? 0;
+    }
+  }
+
+  async function fetchAndRenderGames() {
+    const container = document.getElementById('games-container');
+
+    try {
+      const res = await fetch('/api/live-scores');
+      if (!res.ok) throw new Error(`Flask returned status code ${res.status}`);
+      const games = await res.json();
+
+      if (!Array.isArray(games)) {
+        throw new Error("Flask sent data, but it wasn't a list! Data: " + JSON.stringify(games));
+      }
+
+      if (games.length === 0) {
+        container.innerHTML = '<div class="no-games"><span class="mono">NO GAMES SCHEDULED TODAY</span></div>';
+        return;
+      }
+
+      games.forEach(game => {
+        const existing = container.querySelector(`[data-game-id="${game.id}"]`);
+        if (existing) {
+          patchCard(game);
+        } else {
+          container.insertAdjacentHTML('beforeend', buildCard(game));
+        }
+      });
+
+      // Remove cards for games that are no longer in the feed
+      const currentIds = new Set(games.map(g => String(g.id)));
+      container.querySelectorAll('[data-game-id]').forEach(card => {
+        if (!currentIds.has(card.dataset.gameId)) card.remove();
+      });
+
+    } catch (err) {
+      console.error('Live Score Error:', err);
+      if (!container.querySelector('[data-game-id]')) {
+        container.innerHTML = `
+          <div style="background:rgba(255,0,0,0.1);border:1px solid red;padding:20px;text-align:center;border-radius:8px;">
+            <h3 style="color:#ff4444;margin-bottom:10px;">Connection Error</h3>
+            <p style="color:white;font-family:monospace;">${err.message}</p>
+          </div>`;
+      }
+    }
+  }
+
+  fetchAndRenderGames();
+  setInterval(fetchAndRenderGames, 5000);
+</script>
