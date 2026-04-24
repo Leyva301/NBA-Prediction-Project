@@ -17,6 +17,7 @@ const express    = require('express');
 const ejsLayouts = require('express-ejs-layouts');
 const axios      = require('axios');
 const path       = require('path');
+const records    = require('./records');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -99,9 +100,35 @@ async function fetchTodaysGames() {
 // Home — Live Games
 app.get('/', async (req, res) => {
   const games = await fetchTodaysGames();
+
+  // Autonomous record keeping — fire-and-forget so the home page never blocks
+  Promise.resolve()
+    .then(() => records.resolveFinishedGames(games))
+    .then(() => records.autoPredictGames(games, FLASK_API_URL))
+    .catch(err => console.error('[Records] Auto-predict error:', err.message));
+
   res.render('index', {
     title: 'CourtIQ · Live Games',
     games
+  });
+});
+
+// Records — Prediction History
+app.get('/records', (req, res) => {
+  const predictions = records.getAllPredictions();
+  const stats       = records.getSummaryStats();
+  res.render('records', {
+    title: 'CourtIQ · Records',
+    predictions,
+    stats
+  });
+});
+
+// API — Records JSON (for future live refresh)
+app.get('/api/records', (req, res) => {
+  res.json({
+    predictions: records.getAllPredictions(),
+    stats:       records.getSummaryStats(),
   });
 });
 

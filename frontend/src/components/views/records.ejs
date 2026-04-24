@@ -1,0 +1,120 @@
+<!-- views/records.ejs — Prediction Record Keeping Dashboard -->
+
+<!-- Chart.js — loaded only on this page -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/records.css" />
+
+<!-- Inject data for client-side charts -->
+<script>
+  window.RECORDS_DATA = <%- JSON.stringify(stats) %>;
+</script>
+
+<!-- ── HERO ── -->
+<section class="page-hero">
+  <div class="hero-label mono">AUTONOMOUS PREDICTION LOG</div>
+  <h1 class="hero-title">Model<br><em>Records</em></h1>
+  <p class="hero-sub">
+    Predictions are generated automatically each day when the home page loads.
+    Results are resolved once games go final.
+  </p>
+</section>
+
+<!-- ── STATS BAR ── -->
+<div class="records-stats-bar">
+  <div class="stat-cell">
+    <span class="stat-label">Total Predictions</span>
+    <span class="stat-value accent"><%= stats.total %></span>
+  </div>
+  <div class="stat-cell">
+    <span class="stat-label">Correct</span>
+    <span class="stat-value win"><%= stats.correct %></span>
+  </div>
+  <div class="stat-cell">
+    <span class="stat-label">Incorrect</span>
+    <span class="stat-value loss"><%= stats.incorrect %></span>
+  </div>
+  <div class="stat-cell">
+    <span class="stat-label">Pending</span>
+    <span class="stat-value muted"><%= stats.pending %></span>
+  </div>
+  <div class="stat-cell">
+    <span class="stat-label">Accuracy</span>
+    <span class="stat-value <%= stats.accuracy !== null && stats.accuracy >= 0.55 ? 'win' : stats.accuracy !== null ? 'loss' : 'muted' %>">
+      <%= stats.accuracy !== null ? (stats.accuracy * 100).toFixed(1) + '%' : '—' %>
+    </span>
+  </div>
+</div>
+
+<!-- ── CHARTS ── -->
+<% if (stats.total > 0) { %>
+<div class="charts-row">
+
+  <!-- Pie Chart -->
+  <div class="chart-card">
+    <div class="chart-title">Win / Loss Split</div>
+    <div class="chart-canvas-wrap pie-wrap">
+      <canvas id="pie-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Line Chart -->
+  <div class="chart-card">
+    <div class="chart-title">Daily Accuracy — Last 30 Days</div>
+    <div class="chart-canvas-wrap">
+      <canvas id="line-chart"></canvas>
+    </div>
+  </div>
+
+</div>
+<% } %>
+
+<!-- ── PREDICTION TABLE ── -->
+<div class="records-table-section">
+  <div class="table-header-bar">
+    <span class="table-title mono">All Predictions</span>
+    <span class="table-count mono"><%= predictions.length %> ENTRIES</span>
+  </div>
+
+  <% if (predictions.length === 0) { %>
+    <div class="records-empty">
+      NO PREDICTIONS YET — VISIT THE HOME PAGE TO TRIGGER THE MODEL
+    </div>
+  <% } else { %>
+  <div class="records-table-wrap">
+    <table class="records-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Matchup</th>
+          <th>Predicted Winner</th>
+          <th>Confidence</th>
+          <th>Actual Winner</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% predictions.forEach(p => { %>
+          <tr class="<%= p.correct === true ? 'row-correct' : p.correct === false ? 'row-incorrect' : 'row-pending' %>">
+            <td class="mono" style="font-size:0.68rem; color:var(--text-dim)"><%= p.date %></td>
+            <td class="cell-matchup"><%= p.awayAbbr %> <span style="color:var(--text-dim);font-size:0.7rem">@</span> <%= p.homeAbbr %></td>
+            <td><%= p.predictedAbbr %></td>
+            <td class="cell-prob"><%= p.probWinner !== null ? (p.probWinner * 100).toFixed(1) + '%' : '—' %></td>
+            <td><%= p.actualAbbr || '—' %></td>
+            <td>
+              <% if (p.correct === true) { %>
+                <span class="result-badge correct">CORRECT</span>
+              <% } else if (p.correct === false) { %>
+                <span class="result-badge incorrect">INCORRECT</span>
+              <% } else { %>
+                <span class="result-badge pending">PENDING</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<script src="/records-charts.js"></script>

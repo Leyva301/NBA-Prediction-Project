@@ -1,1 +1,5 @@
 node_modules/
+.claude/
+venv/
+*.log
+.courtiq.pids
