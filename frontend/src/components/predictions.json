@@ -173,12 +173,12 @@
       "predictedAbbr": "BOS",
       "probWinner": 0.5499,
       "probLoser": 0.4501,
-      "actualWinner": null,
-      "actualAbbr": null,
-      "correct": null,
-      "status": "upcoming",
+      "actualWinner": "Boston Celtics",
+      "actualAbbr": "BOS",
+      "correct": true,
+      "status": "final",
       "predictedAt": "2026-04-24T21:21:02.311Z",
-      "resolvedAt": null
+      "resolvedAt": "2026-04-25T06:32:19.970Z"
     },
     {
       "gameId": "0042500173",
@@ -191,12 +191,12 @@
       "predictedAbbr": "HOU",
       "probWinner": 0.5424,
       "probLoser": 0.4576,
-      "actualWinner": null,
-      "actualAbbr": null,
-      "correct": null,
-      "status": "upcoming",
+      "actualWinner": "Los Angeles Lakers",
+      "actualAbbr": "LAL",
+      "correct": false,
+      "status": "final",
       "predictedAt": "2026-04-24T21:21:02.324Z",
-      "resolvedAt": null
+      "resolvedAt": "2026-04-25T06:32:19.970Z"
     },
     {
       "gameId": "0042500153",
@@ -209,12 +209,12 @@
       "predictedAbbr": "SAS",
       "probWinner": 0.6124,
       "probLoser": 0.3876,
-      "actualWinner": null,
-      "actualAbbr": null,
-      "correct": null,
-      "status": "upcoming",
+      "actualWinner": "San Antonio Spurs",
+      "actualAbbr": "SAS",
+      "correct": true,
+      "status": "final",
       "predictedAt": "2026-04-24T21:21:02.338Z",
-      "resolvedAt": null
+      "resolvedAt": "2026-04-25T06:32:19.970Z"
     }
   ]
 }

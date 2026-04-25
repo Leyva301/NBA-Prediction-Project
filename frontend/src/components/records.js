@@ -35,8 +35,10 @@ function writeStore(store) {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
+  // Use EST/EDT (America/New_York) so the date doesn't roll over at 7-8pm
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  // en-CA gives YYYY-MM-DD format natively
+
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
@@ -96,36 +98,64 @@ async function autoPredictGames(games, flaskApiUrl) {
 }
 
 /**
- * For each final game that has an unresolved prediction, determine the actual
- * winner from the scores and mark correct/incorrect.
+ * Resolve all unresolved predictions by fetching results for each unique
+ * past date that has pending entries. Also resolves today's games from the
+ * already-fetched list passed in.
+ *
+ * This replaces the old resolveFinishedGames(games) which only checked
+ * today's scoreboard — causing predictions from prior days to stay pending.
  */
-function resolveFinishedGames(games) {
+async function resolveAllPending(todaysGames, flaskApiUrl) {
   const store = readStore();
-  let changed = false;
+  const pending = store.predictions.filter(p => p.correct === null);
+  if (pending.length === 0) return;
 
-  for (const game of games) {
-    if (game.status !== 'final') continue;
-    if (game.homeScore === null || game.awayScore === null) continue;
-
-    const pred = store.predictions.find(
-      p => p.gameId === game.gameId && p.correct === null
-    );
-    if (!pred) continue;
-
-    const actualWinner = game.homeScore > game.awayScore ? game.homeTeam : game.awayTeam;
-    const actualAbbr   = game.homeScore > game.awayScore ? game.homeAbbr : game.awayAbbr;
-
-    pred.actualWinner = actualWinner;
-    pred.actualAbbr   = actualAbbr;
-    pred.correct      = pred.predictedWinner === actualWinner;
-    pred.status       = 'final';
-    pred.resolvedAt   = new Date().toISOString();
-    changed = true;
-
-    console.log(`[Records] Resolved: ${game.awayAbbr} @ ${game.homeAbbr} → actual: ${actualAbbr} | correct: ${pred.correct}`);
+  // Group pending predictions by date
+  const dateMap = {};
+  for (const p of pending) {
+    if (!dateMap[p.date]) dateMap[p.date] = [];
+    dateMap[p.date].push(p);
   }
 
-  if (changed) writeStore(store);
+  const today = todayISO();
+
+  for (const [date, preds] of Object.entries(dateMap)) {
+    let games;
+
+    if (date === today) {
+      // Use the already-fetched list to avoid a redundant API call
+      games = todaysGames;
+    } else {
+      // Fetch the historical scoreboard for this past date
+      try {
+        const res = await axios.get(`${flaskApiUrl}/games/date/${date}`, { timeout: 10000 });
+        games = res.data.games || [];
+      } catch (err) {
+        console.error(`[Records] Could not fetch results for ${date}:`, err.message);
+        continue;
+      }
+    }
+
+    // Match each pending prediction to a final game by gameId
+    for (const pred of preds) {
+      const game = games.find(g => g.gameId === pred.gameId && g.status === 'final');
+      if (!game) continue;
+      if (game.homeScore === null || game.awayScore === null) continue;
+
+      const actualWinner = game.homeScore > game.awayScore ? game.homeTeam : game.awayTeam;
+      const actualAbbr   = game.homeScore > game.awayScore ? game.homeAbbr : game.awayAbbr;
+
+      pred.actualWinner = actualWinner;
+      pred.actualAbbr   = actualAbbr;
+      pred.correct      = pred.predictedWinner === actualWinner;
+      pred.status       = 'final';
+      pred.resolvedAt   = new Date().toISOString();
+
+      console.log(`[Records] Resolved: ${pred.awayAbbr} @ ${pred.homeAbbr} (${date}) → actual: ${actualAbbr} | correct: ${pred.correct}`);
+    }
+  }
+
+  writeStore(store);
 }
 
 /**
@@ -173,4 +203,4 @@ function getSummaryStats() {
   return { total, correct, incorrect, pending, accuracy, byDate: byDateArray };
 }
 
-module.exports = { autoPredictGames, resolveFinishedGames, getAllPredictions, getSummaryStats };
+module.exports = { autoPredictGames, resolveAllPending, getAllPredictions, getSummaryStats };

@@ -102,8 +102,9 @@ app.get('/', async (req, res) => {
   const games = await fetchTodaysGames();
 
   // Autonomous record keeping — fire-and-forget so the home page never blocks
+  // resolveAllPending checks ALL past dates with pending predictions, not just today
   Promise.resolve()
-    .then(() => records.resolveFinishedGames(games))
+    .then(() => records.resolveAllPending(games, FLASK_API_URL))
     .then(() => records.autoPredictGames(games, FLASK_API_URL))
     .catch(err => console.error('[Records] Auto-predict error:', err.message));
 
