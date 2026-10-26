@@ -13,9 +13,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPONENTS="$SCRIPT_DIR/frontend/src/components"
-FLASK_LOG="$COMPONENTS/flask.log"
-NODE_LOG="$COMPONENTS/node.log"
+BACKEND="$SCRIPT_DIR/backend"
+FRONTEND="$SCRIPT_DIR/frontend"
+FLASK_LOG="$SCRIPT_DIR/flask.log"
+NODE_LOG="$SCRIPT_DIR/node.log"
 PID_FILE="$SCRIPT_DIR/.courtiq.pids"
 
 # ── STOP ──────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ fi
 PYTHON="$SCRIPT_DIR/venv/bin/python"
 
 echo "[CourtIQ] Starting Flask API in background (port 5000)..."
-cd "$COMPONENTS"
+cd "$BACKEND"
 nohup "$PYTHON" flask_api.py > "$FLASK_LOG" 2>&1 &
 FLASK_PID=$!
 
@@ -74,6 +75,7 @@ echo "[CourtIQ] Waiting for model to load (~20s — fetches NBA season data on s
 sleep 20
 
 echo "[CourtIQ] Installing Node.js dependencies..."
+cd "$FRONTEND"
 npm install --silent
 
 echo "[CourtIQ] Starting Node.js server in background (port 3000)..."

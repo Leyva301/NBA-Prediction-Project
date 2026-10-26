@@ -4,12 +4,13 @@
  * Routes:
  *   GET  /          → index page (live games from NBA API)
  *   GET  /predict   → custom prediction form
+ *   GET  /records   → prediction history dashboard
+ *   GET  /api/records → prediction history as JSON
  *   POST /api/predict → calls the Python Flask model API
  *
- * Environment variables (set in .env):
+ * Environment variables (optional, set in .env — see .env.example):
  *   PORT            = 3000
  *   FLASK_API_URL   = http://localhost:5000   ← your Python model server
- *   NBA_API_KEY     = (if you move to a paid NBA data provider)
  */
 
 require('dotenv').config();
@@ -21,7 +22,7 @@ const records    = require('./records');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const FLASK_API_URL = process.env.FLASK_API_URL || 'http://flip3.engr.oregonstate.edu:5000';
+const FLASK_API_URL = process.env.FLASK_API_URL || 'http://localhost:5000';
 
 console.log('Serving static from:', path.join(__dirname, 'public'));
 
@@ -79,19 +80,8 @@ async function fetchTodaysGames() {
     return res.data.games || [];
   } catch (err) {
     console.error('[fetchTodaysGames] Flask API unavailable:', err.message);
-    // Return mock data so the UI still loads during development
-    return [
-      {
-        homeTeam: 'Milwaukee Bucks', homeAbbr: 'MIL', homeScore: null,
-        awayTeam: 'Miami Heat',      awayAbbr: 'MIA', awayScore: null,
-        status: 'upcoming', statusText: '7:30 PM ET'
-      },
-      {
-        homeTeam: 'Golden State Warriors', homeAbbr: 'GSW', homeScore: 112,
-        awayTeam: 'Los Angeles Lakers',    awayAbbr: 'LAL', awayScore: 108,
-        status: 'live', statusText: 'Q3 4:22'
-      },
-    ];
+    // Empty list → index page shows its "no games" state instead of fake games
+    return [];
   }
 }
 
@@ -175,4 +165,4 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`[CourtIQ] Server running at http://localhost:${PORT}`);
   console.log(`[CourtIQ] Flask model API expected at ${FLASK_API_URL}`);
-});
+});

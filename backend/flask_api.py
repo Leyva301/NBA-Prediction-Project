@@ -12,55 +12,73 @@ Endpoints:
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
-import numpy as np
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from model import model, df_processed, features, predict_raw
+from model import predict_raw
 
-from nba_api.stats.endpoints import scoreboardv2, leaguegamefinder
+from nba_api.stats.endpoints import scoreboardv3, leaguegamefinder
 from nba_api.stats.static import teams as nba_teams_static
 
 app = Flask(__name__)
 CORS(app)
+
+# Map TEAM_ID → official full name. The live endpoints call the Clippers
+# "LA Clippers", which doesn't match the "Los Angeles Clippers" the model expects.
+TEAM_NAMES = {t['id']: t['full_name'] for t in nba_teams_static.get_teams()}
+
+
+def to_score(value):
+    """int score, or None when the API hasn't filled one in yet."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def nba_today():
+    """Today's date in US Eastern time — the NBA schedule's calendar."""
+    return datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
 
 # ── shared scoreboard helper ───────────────────────────────────
 def fetch_scoreboard(game_date=None):
     """
     Fetch and parse a scoreboard for a given date.
-    game_date: MM/DD/YYYY string for nba_api, or None for today.
+    game_date: YYYY-MM-DD string, or None for today.
+    ScoreboardV2 is deprecated in nba_api and returns empty line scores for
+    early-season games, so this uses ScoreboardV3.
     """
-    board = scoreboardv2.ScoreboardV2(game_date=game_date) if game_date else scoreboardv2.ScoreboardV2()
+    board = scoreboardv3.ScoreboardV3(game_date=game_date or nba_today(), timeout=30)
 
     game_header = board.game_header.get_data_frame()
     line_score  = board.line_score.get_data_frame()
-    all_teams   = {t['id']: t for t in nba_teams_static.get_teams()}
+    status_map  = {1: 'upcoming', 2: 'live', 3: 'final'}
     games_out   = []
 
     for _, row in game_header.iterrows():
-        gid       = row['GAME_ID']
-        status_id = row['GAME_STATUS_ID']  # 1=upcoming, 2=live, 3=final
+        gid       = row['gameId']
+        status_id = int(row['gameStatus'])  # 1=upcoming, 2=live, 3=final
 
-        scores = line_score[line_score['GAME_ID'] == gid]
+        scores = line_score[line_score['gameId'] == gid]
         if len(scores) < 2:
             continue
 
-        away_row = scores.iloc[0]
-        home_row = scores.iloc[1]
-
-        status_map = {1: 'upcoming', 2: 'live', 3: 'final'}
+        # ScoreboardV3 lists the home team first, then the away team
+        home_row = scores.iloc[0]
+        away_row = scores.iloc[1]
+        started  = status_id in (2, 3)
 
         games_out.append({
             'gameId':     gid,
-            'awayTeam':   away_row['TEAM_CITY_NAME'] + ' ' + away_row['TEAM_NAME'],
-            'awayAbbr':   away_row['TEAM_ABBREVIATION'],
-            'awayScore':  int(away_row['PTS']) if away_row['PTS'] else None,
-            'homeTeam':   home_row['TEAM_CITY_NAME'] + ' ' + home_row['TEAM_NAME'],
-            'homeAbbr':   home_row['TEAM_ABBREVIATION'],
-            'homeScore':  int(home_row['PTS']) if home_row['PTS'] else None,
+            'awayTeam':   TEAM_NAMES.get(away_row['teamId'], f"{away_row['teamCity']} {away_row['teamName']}"),
+            'awayAbbr':   away_row['teamTricode'],
+            'awayScore':  to_score(away_row['score']) if started else None,
+            'homeTeam':   TEAM_NAMES.get(home_row['teamId'], f"{home_row['teamCity']} {home_row['teamName']}"),
+            'homeAbbr':   home_row['teamTricode'],
+            'homeScore':  to_score(home_row['score']) if started else None,
             'status':     status_map.get(status_id, 'upcoming'),
-            'statusText': str(row.get('GAME_STATUS_TEXT', '')).strip(),
+            'statusText': str(row.get('gameStatusText', '')).strip(),
         })
 
     return games_out
@@ -133,10 +151,10 @@ def games_by_date(date_str):
 
             games_out.append({
                 'gameId':     game_id,
-                'awayTeam':   away_row['TEAM_NAME'],
+                'awayTeam':   TEAM_NAMES.get(away_row['TEAM_ID'], away_row['TEAM_NAME']),
                 'awayAbbr':   away_row['TEAM_ABBREVIATION'],
                 'awayScore':  away_pts,
-                'homeTeam':   home_row['TEAM_NAME'],
+                'homeTeam':   TEAM_NAMES.get(home_row['TEAM_ID'], home_row['TEAM_NAME']),
                 'homeAbbr':   home_row['TEAM_ABBREVIATION'],
                 'homeScore':  home_pts,
                 'status':     'final' if is_final else 'upcoming',
