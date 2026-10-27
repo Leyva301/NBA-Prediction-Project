@@ -10,7 +10,7 @@
  *
  * Environment variables (optional, set in .env — see .env.example):
  *   PORT            = 3000
- *   FLASK_API_URL   = http://localhost:5000   ← your Python model server
+ *   FLASK_API_URL   = http://localhost:5050   ← your Python model server
  */
 
 require('dotenv').config();
@@ -22,7 +22,7 @@ const records    = require('./records');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const FLASK_API_URL = process.env.FLASK_API_URL || 'http://localhost:5000';
+const FLASK_API_URL = process.env.FLASK_API_URL || 'http://localhost:5050';
 
 console.log('Serving static from:', path.join(__dirname, 'public'));
 

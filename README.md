@@ -5,7 +5,7 @@ season's) team game logs from the NBA stats API, and keeps a running record of h
 the model's daily picks turned out.
 
 ```
-backend/            Python — model + Flask API (port 5000)
+backend/            Python — model + Flask API (port 5050)
   model.py          fetches game logs, builds features, trains the model
   flask_api.py      /predict, /games/today, /games/date/YYYY-MM-DD
 frontend/           Node.js — Express + EJS website (port 3000)
@@ -52,8 +52,10 @@ cd backend && python model.py
 
 ## Configuration
 
-Both servers work with no configuration. To change ports or where Node finds
-Flask, copy `frontend/.env.example` to `frontend/.env` and edit it.
+Both servers work with no configuration. Flask uses port 5050 rather than 5000
+because macOS AirPlay Receiver already listens on 5000. To use another port, run
+`FLASK_PORT=5051 bash start.sh` (the scripts point Node at it for you). To change
+the website port, copy `frontend/.env.example` to `frontend/.env` and edit `PORT`.
 
 ## Hosting on an OSU flip server
 
@@ -77,8 +79,8 @@ The site is then at `http://<flip host>.engr.oregonstate.edu:3000`.
 
 ## How the records work
 
-Every time someone loads the home page, the site predicts any of today's games it
-hasn't predicted yet, and grades earlier predictions whose games have gone final.
+Every time someone loads the home page, the site predicts any of today's games that
+haven't started yet, and grades earlier predictions whose games have gone final.
 Results are saved in `frontend/predictions.json` and shown on `/records`.
 
 ## Troubleshooting
@@ -87,4 +89,5 @@ Results are saved in `frontend/predictions.json` and shown on `/records`.
   terminal (or `flask.log` on flip). The NBA API sometimes rate-limits or times out;
   wait 30 seconds and restart.
 - **Port already in use:** `bash start-flip.sh stop`, or
-  `pkill -f flask_api.py && pkill -f server.js`.
+  `pkill -f flask_api.py && pkill -f server.js`. If something else owns the port,
+  pick another one: `FLASK_PORT=5051 bash start.sh`.

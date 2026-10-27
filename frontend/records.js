@@ -44,7 +44,8 @@ function todayISO() {
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 /**
- * For each game not yet in the store, call Flask /predict and save the result.
+ * For each upcoming game not yet in the store, call Flask /predict and save the result.
+ * Games already live or final are skipped so the record only counts real pre-game picks.
  * Silently skips games where Flask returns an error (home page must never break).
  */
 async function autoPredictGames(games, flaskApiUrl) {
@@ -54,6 +55,7 @@ async function autoPredictGames(games, flaskApiUrl) {
 
   for (const game of games) {
     if (!game.gameId || existingIds.has(game.gameId)) continue;
+    if (game.status !== 'upcoming') continue;
 
     try {
       const res = await axios.post(
