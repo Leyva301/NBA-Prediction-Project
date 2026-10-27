@@ -1,24 +1,44 @@
 """
-model.py — Refactored NBA Prediction Model
---------------------------------------------
-This is your original predictor script restructured so that
-flask_api.py can import: model, df_processed, features, predict_raw
+model.py — NBA Prediction Model
+--------------------------------
+Fetches team game logs, engineers features, and trains the win-probability model.
+flask_api.py imports: model, df_processed, features, predict_raw
+
+Run directly to print a backtest and a sample prediction:
+  python model.py
 """
+from datetime import date
+
 import pandas as pd
 import numpy as np
 from nba_api.stats.endpoints import leaguegamelog
 from nba_api.stats.static import teams
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, brier_score_loss
 
 # ==============================================================================
 # STEP 1: DATA ACQUISITION
-# We pull the official NBA game logs for every team in the current season.
+# We pull the official NBA game logs for every team in the current season, plus
+# the previous season so the model still has enough games early in the year.
 # ==============================================================================
-print("Fetching 2025-26 Season Data...")
-log = leaguegamelog.LeagueGameLog(player_or_team_abbreviation='T', season='2025-26')
-df_raw = log.get_data_frames()[0]
+def season_string(start_year: int) -> str:
+    """2025 -> '2025-26'"""
+    return f"{start_year}-{(start_year + 1) % 100:02d}"
+
+def current_season_start(today: date = None) -> int:
+    """NBA seasons tip off in October, so Jan-Sep belong to the season that started last year."""
+    today = today or date.today()
+    return today.year if today.month >= 10 else today.year - 1
+
+CURRENT_SEASON = season_string(current_season_start())
+PREVIOUS_SEASON = season_string(current_season_start() - 1)
+
+def fetch_season(season: str) -> pd.DataFrame:
+    log = leaguegamelog.LeagueGameLog(player_or_team_abbreviation='T', season=season, timeout=60)
+    return log.get_data_frames()[0]
+
+print(f"Fetching {PREVIOUS_SEASON} and {CURRENT_SEASON} Season Data...")
+df_raw = pd.concat([fetch_season(PREVIOUS_SEASON), fetch_season(CURRENT_SEASON)], ignore_index=True)
 
 # ==============================================================================
 # STEP 2: FEATURE ENGINEERING (Team Level)
@@ -37,21 +57,24 @@ def process_data_pro(df):
     df['DRtg'] = ((df['PTS'] - df['PLUS_MINUS']) / poss) * 100
     df['Win'] = df['WL'].apply(lambda x: 1 if x == 'W' else 0)
     
+    # Group by team within a season, so win% / form / rest reset each October
+    by_team = df.groupby(['SEASON_ID', 'TEAM_ID'])
+    
     # CALCULATE SITUATIONAL FACTORS
     # 'is_home' identifies home-court advantage.
     # 'rest_days' calculates time since the last game to account for fatigue.
     df['is_home'] = df['MATCHUP'].apply(lambda x: 0 if '@' in x else 1)
-    df['rest_days'] = df.groupby('TEAM_ID')['GAME_DATE'].diff().dt.days.fillna(4)
+    df['rest_days'] = by_team['GAME_DATE'].diff().dt.days.fillna(4)
     
     # CALCULATE SEASON PERFORMANCE (BASELINE)
     # The team's overall win percentage up until that game.
-    df['Season_Win_Pct'] = df.groupby('TEAM_ID')['Win'].transform(lambda x: x.shift(1).expanding().mean())
+    df['Season_Win_Pct'] = by_team['Win'].transform(lambda x: x.shift(1).expanding().mean())
 
     # CALCULATE RECENT FORM (EWMA)
     # Exponentially Weighted Moving Average gives more "weight" to the most recent 10 games.
     # This captures if a team is currently on a hot or cold streak.
-    df["ORtg_EWMA"] = df.groupby("TEAM_ID")["ORtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
-    df["DRtg_EWMA"] = df.groupby("TEAM_ID")["DRtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
+    df["ORtg_EWMA"] = by_team["ORtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
+    df["DRtg_EWMA"] = by_team["DRtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
     
     return df.dropna()
 
@@ -120,7 +143,7 @@ def run_final_backtest(df_back, days=20):
         daily_acc.append(accuracy_score(test['Win'], (probs > 0.5).astype(int)))
         daily_brier.append(brier_score_loss(test['Win'], probs))
         
-    print(f"\n--- 20-DAY BACKTEST RESULTS ---")
+    print(f"\n--- {days}-DAY BACKTEST RESULTS ---")
     print(f"Historical Accuracy: {np.mean(daily_acc):.2%}")
     print(f"Brier Score (Calibration): {np.mean(daily_brier):.4f}")
 
@@ -154,3 +177,7 @@ def predict_raw(team_a: str, team_b: str, home_team: str) -> float:
 
     return float(model.predict_proba(input_data)[0][1])
 
+if __name__ == '__main__':
+    run_final_backtest(df_final)
+    prob = predict_raw("New Orleans Pelicans", "Sacramento Kings", "Sacramento Kings")
+    print(f"\nPROJECTION: New Orleans Pelicans ({prob:.1%}) vs Sacramento Kings ({1 - prob:.1%})")

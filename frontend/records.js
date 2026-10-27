@@ -6,7 +6,7 @@
  *
  * Exports:
  *   autoPredictGames(games, flaskApiUrl)  → auto-predict any new games
- *   resolveFinishedGames(games)           → mark correct/incorrect for final games
+ *   resolveAllPending(games, flaskApiUrl) → mark correct/incorrect for final games
  *   getAllPredictions()                   → full list, newest-first
  *   getSummaryStats()                     → KPIs + per-day accuracy for charts
  */
@@ -38,6 +38,7 @@ function todayISO() {
   // Use EST/EDT (America/New_York) so the date doesn't roll over at 7-8pm
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
   // en-CA gives YYYY-MM-DD format natively
+}
 
 
 // ── Exports ───────────────────────────────────────────────────────────────────
@@ -183,7 +184,8 @@ function getSummaryStats() {
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    byDate[d.toISOString().slice(0, 10)] = { correct: 0, total: 0 };
+    // Same America/New_York date as todayISO(), so late games land on the right day
+    byDate[d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })] = { correct: 0, total: 0 };
   }
 
   for (const p of resolved) {

@@ -5,7 +5,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPONENTS="$SCRIPT_DIR/frontend/src/components"
+BACKEND="$SCRIPT_DIR/backend"
+FRONTEND="$SCRIPT_DIR/frontend"
 
 # Kill Flask on exit (Ctrl+C or error)
 cleanup() {
@@ -32,7 +33,7 @@ fi
 
 # ── 2. Start Flask API ──────────────────────────────────────────
 echo "[CourtIQ] Starting Flask API (port 5000)..."
-cd "$COMPONENTS"
+cd "$BACKEND"
 "$PYTHON" flask_api.py &
 FLASK_PID=$!
 
@@ -41,6 +42,7 @@ sleep 6
 
 # ── 3. Install Node deps (first run only) ──────────────────────
 echo "[CourtIQ] Checking Node.js dependencies..."
+cd "$FRONTEND"
 npm install --silent
 
 # ── 4. Start Node.js server ────────────────────────────────────
