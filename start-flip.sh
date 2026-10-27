@@ -18,6 +18,8 @@ FRONTEND="$SCRIPT_DIR/frontend"
 FLASK_LOG="$SCRIPT_DIR/flask.log"
 NODE_LOG="$SCRIPT_DIR/node.log"
 PID_FILE="$SCRIPT_DIR/.courtiq.pids"
+export FLASK_PORT="${FLASK_PORT:-5050}"
+export FLASK_API_URL="${FLASK_API_URL:-http://localhost:$FLASK_PORT}"
 
 # ── STOP ──────────────────────────────────────────────────────────
 if [ "$1" = "stop" ]; then
@@ -66,7 +68,7 @@ if [ ! -f "$SCRIPT_DIR/venv/bin/python" ]; then
 fi
 PYTHON="$SCRIPT_DIR/venv/bin/python"
 
-echo "[CourtIQ] Starting Flask API in background (port 5000)..."
+echo "[CourtIQ] Starting Flask API in background (port $FLASK_PORT)..."
 cd "$BACKEND"
 nohup "$PYTHON" flask_api.py > "$FLASK_LOG" 2>&1 &
 FLASK_PID=$!
@@ -95,7 +97,7 @@ if kill -0 "$FLASK_PID" 2>/dev/null && kill -0 "$NODE_PID" 2>/dev/null; then
   echo "================================================"
   echo " [CourtIQ] Both servers are running!"
   echo " Frontend : http://$FLIP_HOST:3000"
-  echo " Flask API: http://$FLIP_HOST:5000"
+  echo " Flask API: http://$FLIP_HOST:$FLASK_PORT"
   echo " Flask PID: $FLASK_PID  |  Node PID: $NODE_PID"
   echo ""
   echo " Logs : bash start-flip.sh logs"

@@ -10,6 +10,8 @@ Endpoints:
   GET  /games/date/YYYY-MM-DD → returns scoreboard for a specific past date
 """
 
+import os
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
@@ -170,4 +172,5 @@ def games_by_date(date_str):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # 5050, not Flask's usual 5000: macOS AirPlay Receiver listens on 5000
+    app.run(host='0.0.0.0', port=int(os.environ.get('FLASK_PORT', 5050)), debug=False)

@@ -32,13 +32,27 @@ else
 fi
 
 # ── 2. Start Flask API ──────────────────────────────────────────
-echo "[CourtIQ] Starting Flask API (port 5000)..."
+FLASK_PORT="${FLASK_PORT:-5050}"
+export FLASK_PORT
+export FLASK_API_URL="${FLASK_API_URL:-http://localhost:$FLASK_PORT}"
+
+echo "[CourtIQ] Starting Flask API (port $FLASK_PORT)..."
 cd "$BACKEND"
 "$PYTHON" flask_api.py &
 FLASK_PID=$!
 
-echo "[CourtIQ] Flask PID: $FLASK_PID — waiting for it to initialize..."
-sleep 6
+# Wait until Flask answers (it downloads game logs and trains first).
+# Stop here if it crashes, e.g. because the port is already taken.
+echo "[CourtIQ] Flask PID: $FLASK_PID — waiting for the model to load..."
+until curl -s -o /dev/null "http://localhost:$FLASK_PORT/games/today"; do
+  if ! kill -0 "$FLASK_PID" 2>/dev/null; then
+    echo "[CourtIQ] ERROR: Flask exited during startup (see the message above)."
+    echo "[CourtIQ] If port $FLASK_PORT is in use, run: FLASK_PORT=5051 bash start.sh"
+    exit 1
+  fi
+  sleep 1
+done
+echo "[CourtIQ] Flask is up."
 
 # ── 3. Install Node deps (first run only) ──────────────────────
 echo "[CourtIQ] Checking Node.js dependencies..."
