@@ -114,7 +114,7 @@ async function submitCustomPrediction() {
     const res = await fetch('/api/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamA, teamB, homeTeam })
+      body: JSON.stringify({ teamA, teamB, homeTeam, outA: playersOut('a'), outB: playersOut('b') })
     });
 
     if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -141,9 +141,84 @@ async function submitCustomPrediction() {
       : `⚠ LOW EDGE — CAUTION ADVISED`;
     verdict.className = `result-verdict mono ${isBet ? 'bet' : 'caution'}`;
 
+    renderFactors(data.factors || {}, abbrev(teamA), abbrev(teamB));
+
   } catch (err) {
     showError(err.message, placeholder, content, errorEl, loadingEl);
   }
+}
+
+// ── WHO'S PLAYING: roster checkboxes on the predict page ──
+async function loadRoster(side) {
+  const team = document.getElementById(`team-${side}`)?.value;
+  const box  = document.getElementById(`roster-${side}`);
+  if (!box) return;
+  if (!team) {
+    box.innerHTML = `<span class="roster-empty mono">Select Team ${side.toUpperCase()}</span>`;
+    return;
+  }
+  box.innerHTML = '<span class="roster-empty mono">Loading roster...</span>';
+  try {
+    const res  = await fetch(`/api/roster?team=${encodeURIComponent(team)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+    box.innerHTML = `<div class="roster-team mono">${abbrev(team)}</div>`;
+    data.players.forEach(p => {
+      const label = document.createElement('label');
+      label.className = 'radio-opt';
+      label.title = `${p.minutes} min/game · rating ${p.rating}`;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = true;
+      input.value = p.name;
+      const name = document.createElement('span');
+      name.textContent = `${p.name} · ${Math.round(p.minutes)}m`;
+      label.append(input, name);
+      box.append(label);
+    });
+  } catch (err) {
+    box.innerHTML = `<span class="roster-empty mono">Roster unavailable: ${err.message}</span>`;
+  }
+}
+
+function playersOut(side) {
+  return [...document.querySelectorAll(`#roster-${side} input[type=checkbox]:not(:checked)`)].map(i => i.value);
+}
+
+['a', 'b'].forEach(side => {
+  document.getElementById(`team-${side}`)?.addEventListener('change', () => loadRoster(side));
+});
+
+// Plain-English labels for the factors the model returns (Team A's point of view)
+const FACTOR_LABELS = {
+  Roster_Strength_Diff: 'Available player quality',
+  Perimeter_Edge:       'Shooters vs perimeter D',
+  Three_Matchup:        '3-pt matchup',
+  Two_Matchup:          'Inside scoring matchup',
+  TOV_Matchup:          'Turnover matchup',
+  OREB_Matchup:         'Offensive rebounding',
+  FT_Matchup:           'Free throw matchup',
+  H2H_Margin:           'Head-to-head margin',
+  Season_Diff_Dampened: 'Season record',
+};
+
+function renderFactors(factors, labelA, labelB) {
+  const el = document.getElementById('result-factors');
+  if (!el) return;
+  el.innerHTML = '';
+  Object.entries(FACTOR_LABELS).forEach(([key, label]) => {
+    if (!(key in factors)) return;
+    const v   = factors[key];
+    const row = document.createElement('div');
+    row.className = 'factor-row';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const edge = document.createElement('span');
+    edge.className = v > 0 ? 'edge-a' : v < 0 ? 'edge-b' : '';
+    edge.textContent = v === 0 ? 'EVEN' : `${v > 0 ? labelA : labelB} +${Math.abs(v).toFixed(Math.abs(v) < 1 ? 3 : 1)}`;
+    row.append(name, edge);
+    el.append(row);
+  });
 }
 
 function showError(msg, placeholder, content, errorEl, loadingEl) {
@@ -161,4 +236,4 @@ function abbrev(name) {
   // Return last word (usually the team nickname)
   const parts = name.trim().split(' ');
   return parts[parts.length - 1].toUpperCase();
-}
+}

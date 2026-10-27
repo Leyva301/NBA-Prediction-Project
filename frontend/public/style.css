@@ -474,6 +474,15 @@ body {
 }
 .radio-opt input { accent-color: var(--accent); }
 
+.roster-hint { font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.08em; }
+.roster-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.roster-col { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.roster-col .radio-opt { font-size: 0.72rem; }
+.roster-col .radio-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-team { font-size: 0.6rem; letter-spacing: 0.1em; color: var(--text); margin-bottom: 0.2rem; }
+.roster-empty { font-size: 0.6rem; color: var(--text-dim); }
+.roster-col.unplayed .radio-opt { color: var(--text-dim); text-decoration: line-through; }
+
 .run-btn {
   background: var(--accent);
   border: none;
@@ -513,7 +522,7 @@ body {
 }
 
 .result-content { display: flex; flex-direction: column; gap: 1.5rem; }
-.result-content.hidden, .result-error.hidden, .result-loading.hidden { display: none !important; }
+.result-placeholder.hidden, .result-content.hidden, .result-error.hidden, .result-loading.hidden { display: none !important; }
 
 .result-label {
   font-size: 0.65rem;
@@ -580,6 +589,11 @@ body {
 .result-verdict.bet    { color: var(--accent-2); border-color: var(--accent-2); background: rgba(0,229,160,0.06); }
 .result-verdict.caution{ color: var(--accent);   border-color: var(--accent);   background: rgba(255,77,28,0.06); }
 
+.result-factors { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.62rem; letter-spacing: 0.06em; }
+.factor-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--text-muted); }
+.factor-row .edge-a { color: var(--accent); }
+.factor-row .edge-b { color: var(--win); }
+
 .result-note {
   font-size: 0.58rem;
   letter-spacing: 0.08em;
@@ -630,4 +644,4 @@ body {
   .site-main    { padding: 2rem 1rem 4rem; }
   .games-grid   { grid-template-columns: 1fr; }
   .hero-title   { font-size: 3rem; }
-}
+}

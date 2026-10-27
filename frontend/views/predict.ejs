@@ -41,6 +41,15 @@
       </div>
     </div>
 
+    <div class="form-section">
+      <label class="form-label mono">WHO'S PLAYING</label>
+      <p class="roster-hint mono">Uncheck anyone injured or resting.</p>
+      <div class="roster-cols">
+        <div class="roster-col" id="roster-a"><span class="roster-empty mono">Select Team A</span></div>
+        <div class="roster-col" id="roster-b"><span class="roster-empty mono">Select Team B</span></div>
+      </div>
+    </div>
+
     <button class="run-btn mono" id="run-predict-btn" onclick="submitCustomPrediction()">
       <span>RUN MODEL</span>
       <span class="btn-arrow">→</span>
@@ -75,7 +84,8 @@
       </div>
 
       <div class="result-verdict mono" id="result-verdict"></div>
-      <div class="result-note mono">MODEL: RANDOM FOREST · FEATURES: ORTG/DRTG EWMA + SOS + REST</div>
+      <div class="result-factors mono" id="result-factors"></div>
+      <div class="result-note mono">MODEL: RANDOM FOREST · TEAM FORM + STYLE MATCHUPS + AVAILABLE PLAYERS + HEAD-TO-HEAD</div>
     </div>
 
     <div class="result-error hidden mono" id="result-error"></div>
