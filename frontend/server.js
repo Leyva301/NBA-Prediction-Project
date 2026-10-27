@@ -7,6 +7,7 @@
  *   GET  /records   → prediction history dashboard
  *   GET  /api/records → prediction history as JSON
  *   POST /api/predict → calls the Python Flask model API
+ *   GET  /api/roster  → a team's expected rotation, from the Flask model API
  *
  * Environment variables (optional, set in .env — see .env.example):
  *   PORT            = 3000
@@ -132,9 +133,10 @@ app.get('/predict', (req, res) => {
 });
 
 // ── API: Prediction Endpoint ──
-// Receives { teamA, teamB, homeTeam }, forwards to Flask model, returns probabilities.
+// Receives { teamA, teamB, homeTeam, outA?, outB? }, forwards to Flask model, returns probabilities.
+// outA / outB are names of players sitting out.
 app.post('/api/predict', async (req, res) => {
-  const { teamA, teamB, homeTeam } = req.body;
+  const { teamA, teamB, homeTeam, outA = [], outB = [] } = req.body;
 
   if (!teamA || !teamB || !homeTeam) {
     return res.status(400).json({ error: 'teamA, teamB, and homeTeam are required.' });
@@ -143,16 +145,30 @@ app.post('/api/predict', async (req, res) => {
   try {
     const flaskRes = await axios.post(
       `${FLASK_API_URL}/predict`,
-      { team_a: teamA, team_b: teamB, home_team: homeTeam },
+      { team_a: teamA, team_b: teamB, home_team: homeTeam, out_a: outA, out_b: outB },
       { timeout: 15000 }
     );
 
-    const { prob_a, prob_b } = flaskRes.data;
-    return res.json({ probA: prob_a, probB: prob_b });
+    const { prob_a, prob_b, factors } = flaskRes.data;
+    return res.json({ probA: prob_a, probB: prob_b, factors });
 
   } catch (err) {
     console.error('[/api/predict] Flask error:', err.message);
     return res.status(502).json({ error: 'Model server unavailable. Is Flask running?' });
+  }
+});
+
+// ── API: Roster Endpoint ──
+app.get('/api/roster', async (req, res) => {
+  try {
+    const flaskRes = await axios.get(`${FLASK_API_URL}/roster`, {
+      params: { team: req.query.team },
+      timeout: 15000
+    });
+    return res.json(flaskRes.data);
+  } catch (err) {
+    console.error('[/api/roster] Flask error:', err.message);
+    return res.status(502).json({ error: 'Model server unavailable. Is Flask running?', players: [] });
   }
 });
 
@@ -165,4 +181,4 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`[CourtIQ] Server running at http://localhost:${PORT}`);
   console.log(`[CourtIQ] Flask model API expected at ${FLASK_API_URL}`);
-});
+});

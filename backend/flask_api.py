@@ -6,6 +6,8 @@ Run this alongside the Node.js server:
 
 Endpoints:
   POST /predict              → runs the NBA win probability model
+                               optional out_a / out_b: lists of player names sitting out
+  GET  /roster?team=NAME     → players the model expects to play for a team
   GET  /games/today          → returns today's NBA scoreboard
   GET  /games/date/YYYY-MM-DD → returns scoreboard for a specific past date
 """
@@ -17,7 +19,7 @@ from flask_cors import CORS
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from model import predict_raw
+from model import predict_detail, team_rotation
 
 from nba_api.stats.endpoints import scoreboardv3, leaguegamefinder
 from nba_api.stats.static import teams as nba_teams_static
@@ -98,10 +100,25 @@ def predict():
         return jsonify({'error': 'team_a, team_b, home_team required'}), 400
 
     try:
-        prob_a = predict_raw(team_a, team_b, home_team)
-        return jsonify({'prob_a': round(prob_a, 4), 'prob_b': round(1 - prob_a, 4)})
+        result = predict_detail(team_a, team_b, home_team,
+                                out_a=data.get('out_a') or [], out_b=data.get('out_b') or [])
+        prob_a = result['prob_a']
+        return jsonify({'prob_a': round(prob_a, 4), 'prob_b': round(1 - prob_a, 4),
+                        'factors': result['factors']})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ── /roster ───────────────────────────────────────────────────
+@app.route('/roster', methods=['GET'])
+def roster():
+    team = request.args.get('team')
+    if not team:
+        return jsonify({'error': 'team required', 'players': []}), 400
+    try:
+        return jsonify({'players': team_rotation(team)})
+    except Exception as e:
+        return jsonify({'error': str(e), 'players': []}), 500
 
 
 # ── /games/today ──────────────────────────────────────────────

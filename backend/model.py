@@ -1,12 +1,17 @@
 """
 model.py — NBA Prediction Model
 --------------------------------
-Fetches team game logs, engineers features, and trains the win-probability model.
-flask_api.py imports: model, df_processed, features, predict_raw
+Fetches team and player game logs, builds the matchup features (features.py),
+and trains the win-probability model.
+flask_api.py imports: model, features, predict_raw, predict_detail, team_rotation
 
 Run directly to print a backtest and a sample prediction:
   python model.py
+
+To see which factor groups actually help, run:
+  python compare_features.py
 """
+import os
 from datetime import date
 
 import pandas as pd
@@ -14,12 +19,48 @@ import numpy as np
 from nba_api.stats.endpoints import leaguegamelog
 from nba_api.stats.static import teams
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, brier_score_loss
+from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+
+import features as fx
+
+# ==============================================================================
+# FEATURE SWITCHES
+# Turn a factor group off (False) if compare_features.py shows it hurts.
+# 'base' is the original model and always stays on.
+# To drop a single feature instead of a whole group, add its name to
+# DISABLED_FEATURES (names are listed in features.FEATURE_GROUP_COLUMNS).
+#
+# You can also switch groups off without editing this file:
+#   COURTIQ_DISABLE=head_to_head,perimeter python flask_api.py
+# ==============================================================================
+FEATURE_GROUPS = {
+    'style_matchups':  True,   # 3-pt / paint / turnovers / rebounds / FTs vs what the defense allows
+    'roster_strength': True,   # quality of the players actually available
+    'perimeter':       True,   # available shooters' skill vs the opponent's 3-pt defense
+    'head_to_head':    True,   # margin in earlier meetings this season and last
+}
+DISABLED_FEATURES = set()
+
+for _name in filter(None, os.environ.get('COURTIQ_DISABLE', '').split(',')):
+    if _name.strip() in FEATURE_GROUPS:
+        FEATURE_GROUPS[_name.strip()] = False
+    else:
+        DISABLED_FEATURES.add(_name.strip())
+
+
+def feature_list(groups=None, disabled=()):
+    """Model columns for the given groups (default: the switches above)."""
+    groups = FEATURE_GROUPS if groups is None else groups
+    on = ['base'] + [g for g, enabled in groups.items() if enabled]
+    return [c for g in on for c in fx.FEATURE_GROUP_COLUMNS[g] if c not in disabled]
+
+
+features = feature_list(disabled=DISABLED_FEATURES)
 
 # ==============================================================================
 # STEP 1: DATA ACQUISITION
-# We pull the official NBA game logs for every team in the current season, plus
-# the previous season so the model still has enough games early in the year.
+# Official NBA game logs for the current and previous season: one row per team
+# per game, and one row per player per game (who played and how well).
 # ==============================================================================
 def season_string(start_year: int) -> str:
     """2025 -> '2025-26'"""
@@ -33,149 +74,131 @@ def current_season_start(today: date = None) -> int:
 CURRENT_SEASON = season_string(current_season_start())
 PREVIOUS_SEASON = season_string(current_season_start() - 1)
 
-def fetch_season(season: str) -> pd.DataFrame:
-    log = leaguegamelog.LeagueGameLog(player_or_team_abbreviation='T', season=season, timeout=60)
+def fetch_season(season: str, kind: str = 'T') -> pd.DataFrame:
+    """kind 'T' = team game logs, 'P' = player game logs."""
+    log = leaguegamelog.LeagueGameLog(player_or_team_abbreviation=kind, season=season, timeout=60)
     return log.get_data_frames()[0]
 
 print(f"Fetching {PREVIOUS_SEASON} and {CURRENT_SEASON} Season Data...")
 df_raw = pd.concat([fetch_season(PREVIOUS_SEASON), fetch_season(CURRENT_SEASON)], ignore_index=True)
+df_players_raw = pd.concat([fetch_season(PREVIOUS_SEASON, 'P'), fetch_season(CURRENT_SEASON, 'P')],
+                           ignore_index=True)
 
 # ==============================================================================
-# STEP 2: FEATURE ENGINEERING (Team Level)
-# This function calculates advanced stats and rolling averages for each team.
+# STEP 2-3: FEATURE ENGINEERING + MATCHUP CONSTRUCTION (see features.py)
 # ==============================================================================
-def process_data_pro(df):
-    df = df.copy()
-    df['GAME_DATE'] = pd.to_datetime(df['GAME_DATE'])
-    df = df.sort_values(['TEAM_ID', 'GAME_DATE'])
-    
-    # CALCULATE ADVANCED RATINGS
-    # We estimate possessions (poss) to find points per 100 possessions (ORtg/DRtg).
-    # This is more accurate than raw PPG because it ignores game pace.
-    poss = df['FGA'] + 0.44 * df['FTA'] - df['OREB'] + df['TOV']
-    df['ORtg'] = (df['PTS'] / poss) * 100
-    df['DRtg'] = ((df['PTS'] - df['PLUS_MINUS']) / poss) * 100
-    df['Win'] = df['WL'].apply(lambda x: 1 if x == 'W' else 0)
-    
-    # Group by team within a season, so win% / form / rest reset each October
-    by_team = df.groupby(['SEASON_ID', 'TEAM_ID'])
-    
-    # CALCULATE SITUATIONAL FACTORS
-    # 'is_home' identifies home-court advantage.
-    # 'rest_days' calculates time since the last game to account for fatigue.
-    df['is_home'] = df['MATCHUP'].apply(lambda x: 0 if '@' in x else 1)
-    df['rest_days'] = by_team['GAME_DATE'].diff().dt.days.fillna(4)
-    
-    # CALCULATE SEASON PERFORMANCE (BASELINE)
-    # The team's overall win percentage up until that game.
-    df['Season_Win_Pct'] = by_team['Win'].transform(lambda x: x.shift(1).expanding().mean())
+LEAGUE_3P = df_raw['FG3M'].sum() / df_raw['FG3A'].sum()
 
-    # CALCULATE RECENT FORM (EWMA)
-    # Exponentially Weighted Moving Average gives more "weight" to the most recent 10 games.
-    # This captures if a team is currently on a hot or cold streak.
-    df["ORtg_EWMA"] = by_team["ORtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
-    df["DRtg_EWMA"] = by_team["DRtg"].transform(lambda x: x.shift(1).ewm(span=10).mean())
-    
-    return df.dropna()
-
-df_processed = process_data_pro(df_raw)
-
-# ==============================================================================
-# STEP 3: MATCHUP CONSTRUCTION
-# We take the team stats and merge them with their opponent's stats for every game.
-# ==============================================================================
-match_cols = ['GAME_ID', 'GAME_DATE', 'TEAM_ID', 'TEAM_NAME', 'Win', 'is_home', 'rest_days', 'Season_Win_Pct', 'ORtg_EWMA', 'DRtg_EWMA']
-matchups = df_processed[match_cols]
-
-# Create a second dataframe for opponents and rename columns to avoid confusion
-opponents = matchups.copy().rename(columns={
-    'TEAM_ID': 'OPP_ID', 'TEAM_NAME': 'OPP_NAME', 'Win': 'OPP_Win', 
-    'is_home': 'OPP_is_home', 'rest_days': 'OPP_rest', 
-    'Season_Win_Pct': 'OPP_Win_Pct', 'ORtg_EWMA': 'OPP_ORtg', 'DRtg_EWMA': 'OPP_DRtg'
-})
-
-# Merge so each row contains Team A vs Team B data
-df_final = pd.merge(matchups, opponents, on=['GAME_ID', 'GAME_DATE'])
-df_final = df_final[df_final['TEAM_ID'] != df_final['OPP_ID']]
-
-# CALCULATE MATCHUP ADVANTAGES
-# Off_Adv_SoS: How well Team A scores vs Team B's defense, adjusted for Team B's strength.
-df_final['Off_Adv_SoS'] = (df_final['ORtg_EWMA'] - df_final['OPP_DRtg']) * (1 + df_final['OPP_Win_Pct'])
-df_final['Def_Adv_SoS'] = (df_final['OPP_ORtg'] - df_final['DRtg_EWMA']) * (1 + df_final['OPP_Win_Pct'])
-df_final['Rest_Adv'] = df_final['rest_days'] - df_final['OPP_rest']
-
-# NON-LINEAR DAMPENING
-# We "squish" the Season Win Pct difference using a square root. 
-# This prevents the model from being overconfident when a #1 seed plays a #10 seed.
-diff = df_final['Season_Win_Pct'] - df_final['OPP_Win_Pct']
-df_final['Season_Diff_Dampened'] = np.sign(diff) * np.sqrt(np.abs(diff))
+team_table = fx.build_team_table(df_raw)
+player_table = fx.build_player_table(df_players_raw, LEAGUE_3P)
+df_final = fx.build_training_set(team_table, player_table, LEAGUE_3P)
+team_state = fx.team_current_state(team_table)
 
 # ==============================================================================
 # STEP 4: MODEL TRAINING
-# We use a Random Forest (an ensemble of 200 decision trees) to learn patterns.
+# A Random Forest (an ensemble of 200 decision trees) learns patterns.
 # ==============================================================================
-features = ['is_home', 'Off_Adv_SoS', 'Def_Adv_SoS', 'Rest_Adv', 'Season_Diff_Dampened']
-X = df_final[features]
-y = df_final['Win']
+def new_model(n_estimators=200):
+    return RandomForestClassifier(n_estimators=n_estimators, max_depth=7, min_samples_leaf=5,
+                                  random_state=42, n_jobs=-1)
 
-model = RandomForestClassifier(n_estimators=200, max_depth=7, min_samples_leaf=5, random_state=42)
-model.fit(X, y)
+model = new_model()
+model.fit(df_final[features], df_final['Win'])
 
 # ==============================================================================
 # STEP 5: BACKTESTING (Validation)
-# We test the model by simulating it day-by-day over the last 20 days.
+# Walk forward through the last `days` game dates: retrain on every game before
+# a block of dates, predict that block, move on. Each game is scored once (from
+# the home team's side) so mirrored rows don't count twice.
 # ==============================================================================
-def run_final_backtest(df_back, days=20):
-    unique_dates = sorted(df_back['GAME_DATE'].unique())[-days:]
-    daily_acc, daily_brier = [], []
-    
-    for d in unique_dates:
-        # Only "train" on games before the day we are predicting
-        train = df_back[df_back['GAME_DATE'] < d]
-        test = df_back[df_back['GAME_DATE'] == d]
-        if len(train) < 200 or len(test) == 0: continue
-        
-        m = RandomForestClassifier(n_estimators=100, max_depth=7, random_state=42)
-        m.fit(train[features], train['Win'])
-        
-        # Brier Score checks if our 70% probability is actually accurate in reality
-        probs = m.predict_proba(test[features])[:, 1]
-        daily_acc.append(accuracy_score(test['Win'], (probs > 0.5).astype(int)))
-        daily_brier.append(brier_score_loss(test['Win'], probs))
-        
-    print(f"\n--- {days}-DAY BACKTEST RESULTS ---")
-    print(f"Historical Accuracy: {np.mean(daily_acc):.2%}")
-    print(f"Brier Score (Calibration): {np.mean(daily_brier):.4f}")
+def walk_forward(df_back, cols, days=100, retrain_every=7, n_estimators=100):
+    dates = sorted(df_back['GAME_DATE'].unique())[-days:]
+    probs, wins = [], []
+
+    for i in range(0, len(dates), retrain_every):
+        block = dates[i:i + retrain_every]
+        train = df_back[df_back['GAME_DATE'] < block[0]]
+        test = df_back[df_back['GAME_DATE'].isin(block) & (df_back['is_home'] == 1)]
+        if len(train) < 200 or len(test) == 0:
+            continue
+        m = new_model(n_estimators)
+        m.fit(train[cols], train['Win'])
+        probs.extend(m.predict_proba(test[cols])[:, 1])
+        wins.extend(test['Win'])
+
+    probs, wins = np.array(probs), np.array(wins)
+    return {
+        'games': len(wins),
+        'accuracy': accuracy_score(wins, probs > 0.5),
+        # Brier / log loss check whether "70%" really wins 70% of the time (lower is better)
+        'brier': brier_score_loss(wins, probs),
+        'log_loss': log_loss(wins, np.clip(probs, 1e-6, 1 - 1e-6), labels=[0, 1]),
+    }
+
+def run_final_backtest(df_back, days=100):
+    r = walk_forward(df_back, features, days=days)
+    print(f"\n--- {days}-DAY WALK-FORWARD BACKTEST ({r['games']} games) ---")
+    print(f"Features: {', '.join(features)}")
+    print(f"Historical Accuracy: {r['accuracy']:.2%}")
+    print(f"Brier Score (Calibration): {r['brier']:.4f}")
 
 # ==============================================================================
 # STEP 6: LIVE PREDICTION INTERFACE
-# Input two teams to get the win probability for tonight's matchup.
 # ==============================================================================
-# ── PREDICTION FUNCTION (returns float, not print) ───────────────
-def predict_raw(team_a: str, team_b: str, home_team: str) -> float:
+def team_id(name: str) -> int:
+    name = name.replace("TrailBlazers", "Trail Blazers")
+    match = [t for t in teams.get_teams() if t['full_name'] == name]
+    if not match:
+        raise ValueError(f"Unknown team: {name}")
+    return match[0]['id']
+
+def team_rotation(name: str) -> list:
+    """The players the model currently expects to play for a team."""
+    roster = fx.current_rotation(player_table, team_table, team_id(name))
+    roster = roster[roster['mins'] >= fx.ROTATION_MINUTES]
+    return [{'name': r.PLAYER_NAME, 'minutes': round(float(r.mins), 1),
+             'rating': round(float(r.rate * 36), 1)} for r in roster.itertuples()]
+
+def _side(tid, opp_tid, is_home, game_day, out):
+    """One team's pre-game state for a matchup happening on game_day."""
+    s = team_state.loc[tid]
+    roster = fx.current_rotation(player_table, team_table, tid)
+    out = {o.strip().lower() for o in out or []}
+    roster = roster[~roster['PLAYER_NAME'].str.lower().isin(out)]
+
+    lineup = fx.lineup_strength(roster.assign(key=0), 'key', player_table.attrs['replacement'], LEAGUE_3P)
+    lineup = lineup.iloc[0].to_dict() if len(lineup) else fx.empty_lineup(player_table.attrs['replacement'])
+
+    h2h_mean, h2h_games = fx.head_to_head(team_table, tid, opp_tid)
+    row = {c: s[c] for c in fx.TEAM_STATE_COLS}
+    row.update(lineup, is_home=is_home, H2H_Mean=h2h_mean, H2H_Games=h2h_games,
+               rest_days=float((game_day - s['LAST_GAME']).days))
+    return pd.DataFrame([row])
+
+def predict_detail(team_a: str, team_b: str, home_team: str, out_a=None, out_b=None, game_day=None) -> dict:
+    """
+    Win probability for team_a plus the matchup factors behind it.
+    out_a / out_b: player names who won't play (injuries, rest).
+    """
+    a, b, home = team_id(team_a), team_id(team_b), team_id(home_team)
+    game_day = pd.Timestamp(game_day or date.today())
+
+    A = _side(a, b, int(home == a), game_day, out_a)
+    B = _side(b, a, int(home == b), game_day, out_b)
+    f_ab = fx.matchup_features(A, B, LEAGUE_3P)
+    f_ba = fx.matchup_features(B, A, LEAGUE_3P)
+
+    # Ask the model from both sides and average, so P(A) + P(B) = 1 exactly
+    p_ab = model.predict_proba(f_ab[features])[0][1]
+    p_ba = model.predict_proba(f_ba[features])[0][1]
+    prob_a = float((p_ab + (1 - p_ba)) / 2)
+
+    return {'prob_a': prob_a,
+            'factors': {c: round(float(f_ab[c].iloc[0]), 4) for c in features}}
+
+def predict_raw(team_a: str, team_b: str, home_team: str, out_a=None, out_b=None) -> float:
     """Returns win probability for team_a. Raises on bad team names."""
-    def clean(name): return name.replace("TrailBlazers", "Trail Blazers")
-    team_a, team_b, home_team = clean(team_a), clean(team_b), clean(home_team)
-
-    all_teams = teams.get_teams()
-    t_a_id = [t for t in all_teams if t['full_name'] == team_a][0]['id']
-    t_b_id = [t for t in all_teams if t['full_name'] == team_b][0]['id']
-
-    s_a = df_processed[df_processed['TEAM_ID'] == t_a_id].iloc[-1]
-    s_b = df_processed[df_processed['TEAM_ID'] == t_b_id].iloc[-1]
-
-    s_diff        = s_a['Season_Win_Pct'] - s_b['Season_Win_Pct']
-    dampened_diff = np.sign(s_diff) * np.sqrt(np.abs(s_diff))
-
-    input_data = pd.DataFrame([[
-        1 if team_a == home_team else 0,
-        (s_a['ORtg_EWMA'] - s_b['DRtg_EWMA']) * (1 + s_b['Season_Win_Pct']),
-        (s_b['ORtg_EWMA'] - s_a['DRtg_EWMA']) * (1 + s_a['Season_Win_Pct']),
-        s_a['rest_days'] - s_b['rest_days'],
-        dampened_diff
-    ]], columns=features)
-
-    return float(model.predict_proba(input_data)[0][1])
+    return predict_detail(team_a, team_b, home_team, out_a, out_b)['prob_a']
 
 if __name__ == '__main__':
     run_final_backtest(df_final)

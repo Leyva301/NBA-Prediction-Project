@@ -6,8 +6,10 @@ the model's daily picks turned out.
 
 ```
 backend/            Python — model + Flask API (port 5050)
-  model.py          fetches game logs, builds features, trains the model
-  flask_api.py      /predict, /games/today, /games/date/YYYY-MM-DD
+  model.py          fetches game logs, trains the model; FEATURE_GROUPS switches live here
+  features.py       team form, style matchups, player availability, head-to-head
+  compare_features.py  backtests each factor group against the original model
+  flask_api.py      /predict, /roster, /games/today, /games/date/YYYY-MM-DD
 frontend/           Node.js — Express + EJS website (port 3000)
   server.js         pages: / (today's games), /predict, /records
   records.js        auto-predicts today's games and grades them once final
@@ -49,6 +51,38 @@ To just see the model's backtest and a sample prediction:
 ```bash
 cd backend && python model.py
 ```
+
+## Matchup factors and turning them off
+
+On top of the original team-form features, the model can use four groups of
+matchup factors (all in `backend/features.py`):
+
+- **style_matchups**: 3-pt volume and accuracy, inside scoring, turnovers,
+  offensive rebounding and free throws, each against what the other defense allows
+- **roster_strength**: quality of the players actually available, from each
+  player's recent box scores weighted by their usual minutes
+- **perimeter**: how good the available shooters are, against the 3-pt % the
+  other defense allows
+- **head_to_head**: margin in earlier meetings, scaled down when there are few
+
+To see whether each group helps, run the comparison (takes a couple of minutes):
+
+```bash
+cd backend && python compare_features.py
+```
+
+It backtests the original model, the original plus each group, everything, and
+everything minus each group, then prints suggested switches. To turn a group
+off, set it to `False` in `FEATURE_GROUPS` at the top of `backend/model.py`, or
+without editing anything:
+
+```bash
+COURTIQ_DISABLE=head_to_head,perimeter python flask_api.py
+```
+
+On the Predict page you can uncheck players who are injured or resting; the
+model rebuilds that team's strength without them. Players who have missed the
+team's last 3 games are left out automatically.
 
 ## Configuration
 
